@@ -13,12 +13,13 @@ extern "C" {
 #endif
 
 // =============================================================================
-// CONFIGURAÇÕES DE HARDWARE - JC3248W535EN
+// CONFIGURACOES DE HARDWARE - JC3248W535EN
 // =============================================================================
 
-// Display (já configurado pelo BSP)
-#define SCREEN_WIDTH                320
-#define SCREEN_HEIGHT               480
+// Display (configuracao para modo horizontal/landscape)
+#define LVGL_PORT_ROTATION_DEGREE   90
+#define SCREEN_WIDTH                480
+#define SCREEN_HEIGHT               320
 #define LVGL_TICK_PERIOD           20
 
 // I2C para BNO055 (usando pinos disponiveis, evitando conflito com touchscreen)

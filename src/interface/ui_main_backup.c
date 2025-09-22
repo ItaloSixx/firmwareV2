@@ -1,4 +1,4 @@
-#include "ui_main.h"
+#include "ui_main_backup.h"
 #include <esp_log.h>
 #include <stdio.h>
 
@@ -13,7 +13,7 @@ static lv_obj_t *connection_status_label = NULL;
 /**
  * @brief Atualiza o texto do label principal
  */
-void ui_update_label(const char* text)
+void ui_update_label_backup(const char* text)
 {
     if(sensor_data_label != NULL) {
         lv_label_set_text(sensor_data_label, text);
@@ -24,7 +24,7 @@ void ui_update_label(const char* text)
 /**
  * @brief Atualiza status de conexao do sensor
  */
-void ui_update_connection_status(bool bno055_connected)
+void ui_update_connection_status_backup(bool bno055_connected)
 {
     if(connection_status_label != NULL) {
         if(bno055_connected) {
@@ -38,9 +38,9 @@ void ui_update_connection_status(bool bno055_connected)
 }
 
 /**
- * @brief Cria a interface principal
+ * @brief Cria a interface principal (versão backup)
  */
-void ui_main_init(void)
+void ui_main_init_backup(void)
 {
     ESP_LOGI(TAG, "Inicializando interface de teste do BNO055...");
     
@@ -100,9 +100,9 @@ void ui_main_init(void)
 }
 
 /**
- * @brief Atualiza interface com dados dos sensores
+ * @brief Atualiza interface com dados dos sensores (versão backup)
  */
-void ui_update_sensor_data(const sensor_data_t *data)
+void ui_update_sensor_data_backup(const sensor_data_t *data)
 {
     if (!data) return;
     
