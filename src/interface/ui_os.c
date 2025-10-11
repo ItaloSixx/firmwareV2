@@ -118,60 +118,53 @@ static void notification_timer_cb(lv_timer_t *timer)
 // =============================================================================
 
 /**
- * @brief Cria a barra de status superior
+ * @brief Cria a barra de status superior (tema claro)
  */
 static void create_status_bar(void)
 {
     status_bar = lv_obj_create(main_container);
     lv_obj_set_size(status_bar, UI_SCREEN_WIDTH, UI_STATUS_BAR_HEIGHT);
     lv_obj_align(status_bar, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_color(status_bar, lv_color_hex(UI_COLOR_PRIMARY_VARIANT), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(status_bar, lv_color_hex(0x2C3E50), LV_PART_MAIN);
     lv_obj_set_style_radius(status_bar, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(status_bar, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(status_bar, 4, LV_PART_MAIN);
     
-    // Horário
+    // Horario
     time_label = lv_label_create(status_bar);
-    lv_label_set_text(time_label, "00:00");
-    lv_obj_set_style_text_color(time_label, lv_color_hex(UI_COLOR_ON_PRIMARY), LV_PART_MAIN);
+    lv_label_set_text(time_label, "10 Apr 2020 15:36");
+    lv_obj_set_style_text_color(time_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
     lv_obj_set_style_text_font(time_label, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_obj_align(time_label, LV_ALIGN_LEFT_MID, 8, 0);
+    lv_obj_align(time_label, LV_ALIGN_RIGHT_MID, -8, 0);
     
-    // Título central
-    lv_obj_t *title_label = lv_label_create(status_bar);
-    lv_label_set_text(title_label, "ESP32-S3 OS");
-    lv_obj_set_style_text_color(title_label, lv_color_hex(UI_COLOR_ON_PRIMARY), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_center(title_label);
-    
-    // Bateria
-    battery_label = lv_label_create(status_bar);
-    lv_label_set_text(battery_label, "100%");
-    lv_obj_set_style_text_color(battery_label, lv_color_hex(UI_COLOR_ON_PRIMARY), LV_PART_MAIN);
-    lv_obj_set_style_text_font(battery_label, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_obj_align(battery_label, LV_ALIGN_RIGHT_MID, -8, 0);
-    
-    // Ícones de conectividade
-    wifi_icon = lv_label_create(status_bar);
+    // Icones de status (lado esquerdo) - como na imagem
+    lv_obj_t *wifi_icon = lv_label_create(status_bar);
     lv_label_set_text(wifi_icon, LV_SYMBOL_WIFI);
-    lv_obj_set_style_text_color(wifi_icon, lv_color_hex(UI_COLOR_SUCCESS), LV_PART_MAIN);
-    lv_obj_align(wifi_icon, LV_ALIGN_RIGHT_MID, -60, 0);
+    lv_obj_set_style_text_color(wifi_icon, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_text_font(wifi_icon, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_align(wifi_icon, LV_ALIGN_LEFT_MID, 8, 0);
     
-    bluetooth_icon = lv_label_create(status_bar);
-    lv_label_set_text(bluetooth_icon, LV_SYMBOL_BLUETOOTH);
-    lv_obj_set_style_text_color(bluetooth_icon, lv_color_hex(UI_COLOR_INFO), LV_PART_MAIN);
-    lv_obj_align(bluetooth_icon, LV_ALIGN_RIGHT_MID, -80, 0);
+    lv_obj_t *call_icon = lv_label_create(status_bar);
+    lv_label_set_text(call_icon, LV_SYMBOL_CALL);
+    lv_obj_set_style_text_color(call_icon, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_text_font(call_icon, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_align(call_icon, LV_ALIGN_LEFT_MID, 35, 0);
     
-    // Notificações
-    notification_icon = lv_label_create(status_bar);
-    lv_label_set_text(notification_icon, LV_SYMBOL_BELL);
-    lv_obj_set_style_text_color(notification_icon, lv_color_hex(UI_COLOR_WARNING), LV_PART_MAIN);
-    lv_obj_align(notification_icon, LV_ALIGN_RIGHT_MID, -100, 0);
-    lv_obj_add_flag(notification_icon, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_t *edit_icon = lv_label_create(status_bar);
+    lv_label_set_text(edit_icon, LV_SYMBOL_EDIT);
+    lv_obj_set_style_text_color(edit_icon, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_text_font(edit_icon, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_align(edit_icon, LV_ALIGN_LEFT_MID, 62, 0);
+    
+    lv_obj_t *folder_icon = lv_label_create(status_bar);
+    lv_label_set_text(folder_icon, LV_SYMBOL_DIRECTORY);
+    lv_obj_set_style_text_color(folder_icon, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_text_font(folder_icon, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_align(folder_icon, LV_ALIGN_LEFT_MID, 89, 0);
 }
 
 /**
- * @brief Cria a barra de navegação inferior
+ * @brief Cria a barra de navegacao inferior
  */
 static void create_navigation_bar(void)
 {
@@ -241,7 +234,7 @@ static void create_content_area(void)
 // =============================================================================
 
 /**
- * @brief Cria a tela Home moderna
+ * @brief Cria a tela Home moderna (estilo da imagem de referencia)
  */
 static void create_home_screen(void)
 {
@@ -251,27 +244,33 @@ static void create_home_screen(void)
     lv_obj_set_style_border_width(screens[UI_SCREEN_HOME], 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(screens[UI_SCREEN_HOME], UI_MARGIN_LARGE, LV_PART_MAIN);
     
-    // Titulo principal centrado
-    lv_obj_t *main_title = lv_label_create(screens[UI_SCREEN_HOME]);
-    lv_label_set_text(main_title, "Que deseja fazer hoje?");
-    lv_obj_set_style_text_color(main_title, lv_color_hex(UI_COLOR_ON_BACKGROUND), LV_PART_MAIN);
-    lv_obj_set_style_text_font(main_title, &lv_font_montserrat_18, LV_PART_MAIN);
-    lv_obj_align(main_title, LV_ALIGN_TOP_MID, 0, 20);
+    // Container principal centralizado (como na imagem)
+    lv_obj_t *main_container = lv_obj_create(screens[UI_SCREEN_HOME]);
+    lv_obj_set_size(main_container, 360, 200);
+    lv_obj_center(main_container);
+    lv_obj_set_style_bg_color(main_container, lv_color_hex(0xF5F5F5), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(main_container, LV_OPA_100, LV_PART_MAIN);
+    lv_obj_set_style_radius(main_container, 20, LV_PART_MAIN);
+    lv_obj_set_style_border_width(main_container, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(main_container, 20, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(main_container, 10, LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(main_container, LV_OPA_20, LV_PART_MAIN);
+    lv_obj_set_style_shadow_color(main_container, lv_color_hex(0x000000), LV_PART_MAIN);
     
-    // Container para os botoes principais (grid 2x2)
-    lv_obj_t *button_container = lv_obj_create(screens[UI_SCREEN_HOME]);
-    lv_obj_set_size(button_container, 440, 140);
-    lv_obj_align(button_container, LV_ALIGN_CENTER, 0, -10);
-    lv_obj_set_style_bg_opa(button_container, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(button_container, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(button_container, 0, LV_PART_MAIN);
+    // Grid de botoes (2x2 como na imagem)
+    lv_obj_t *button_grid = lv_obj_create(main_container);
+    lv_obj_set_size(button_grid, 280, 120);
+    lv_obj_align(button_grid, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_set_style_bg_opa(button_grid, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(button_grid, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(button_grid, 0, LV_PART_MAIN);
     
-    // Definir cores para cada botao (como na imagem)
+    // Cores dos botoes (igual a imagem)
     uint32_t button_colors[] = {
-        0x8E44AD, // Purple - Sensores
-        0x3498DB, // Blue - Sistema  
-        0x27AE60, // Green - Config
-        0xE74C3C  // Red - Sobre
+        0x8E44AD, // Purple - SENSORES
+        0x3498DB, // Blue - SISTEMA  
+        0x27AE60, // Green - CONFIG
+        0xE74C3C  // Red - SOBRE
     };
     
     const char* button_texts[] = {
@@ -281,20 +280,20 @@ static void create_home_screen(void)
         "SOBRE"
     };
     
-    // Criar botoes em grid 2x2
+    // Criar botoes 2x2
     for (int i = 0; i < 4; i++) {
-        lv_obj_t *btn = lv_btn_create(button_container);
-        lv_obj_set_size(btn, 100, 60);
+        lv_obj_t *btn = lv_btn_create(button_grid);
+        lv_obj_set_size(btn, 120, 50);
         
-        // Posicionar em grid
-        int x = (i % 2) * 110 + 10;
-        int y = (i / 2) * 70 + 10;
+        // Posicionar em grid 2x2
+        int x = (i % 2) * 140 + 10;
+        int y = (i / 2) * 60 + 10;
         lv_obj_set_pos(btn, x, y);
         
-        // Aplicar cor especifica
+        // Estilo do botao
         lv_obj_set_style_bg_color(btn, lv_color_hex(button_colors[i]), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(btn, LV_OPA_100, LV_PART_MAIN);
-        lv_obj_set_style_radius(btn, UI_RADIUS_LARGE, LV_PART_MAIN);
+        lv_obj_set_style_radius(btn, 15, LV_PART_MAIN);
         lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
         lv_obj_set_style_shadow_width(btn, 8, LV_PART_MAIN);
         lv_obj_set_style_shadow_opa(btn, LV_OPA_30, LV_PART_MAIN);
@@ -304,13 +303,20 @@ static void create_home_screen(void)
         // Texto do botao
         lv_obj_t *btn_label = lv_label_create(btn);
         lv_label_set_text(btn_label, button_texts[i]);
-        lv_obj_set_style_text_color(btn_label, lv_color_hex(UI_COLOR_ON_PRIMARY), LV_PART_MAIN);
-        lv_obj_set_style_text_font(btn_label, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_obj_set_style_text_color(btn_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+        lv_obj_set_style_text_font(btn_label, &lv_font_montserrat_14, LV_PART_MAIN);
         lv_obj_center(btn_label);
         
         // Callback para navegacao
         lv_obj_add_event_cb(btn, nav_button_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
     }
+    
+    // Texto inferior (como na imagem)
+    lv_obj_t *bottom_text = lv_label_create(main_container);
+    lv_label_set_text(bottom_text, "What do you want to do today?");
+    lv_obj_set_style_text_color(bottom_text, lv_color_hex(UI_COLOR_ON_BACKGROUND), LV_PART_MAIN);
+    lv_obj_set_style_text_font(bottom_text, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_align(bottom_text, LV_ALIGN_BOTTOM_MID, 0, -10);
 }
 
 /**
@@ -327,7 +333,7 @@ static void create_sensors_screen(void)
     
     // Titulo
     lv_obj_t *title = lv_label_create(screens[UI_SCREEN_SENSORS]);
-    lv_label_set_text(title, "Monitoramento de Sensores");
+    lv_label_set_text(title, "Sensor Monitoring");
     lv_obj_set_style_text_color(title, lv_color_hex(UI_COLOR_SECONDARY), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_16, LV_PART_MAIN);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
@@ -339,13 +345,13 @@ static void create_sensors_screen(void)
     apply_card_style(bno_card);
     
     lv_obj_t *bno_title = lv_label_create(bno_card);
-    lv_label_set_text(bno_title, LV_SYMBOL_CHARGE " BNO055 - Orientacao");
+    lv_label_set_text(bno_title, LV_SYMBOL_CHARGE " BNO055 - Orientation");
     lv_obj_set_style_text_color(bno_title, lv_color_hex(UI_COLOR_SUCCESS), LV_PART_MAIN);
     lv_obj_set_style_text_font(bno_title, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_align(bno_title, LV_ALIGN_TOP_LEFT, 0, 0);
     
     lv_obj_t *bno_data = lv_label_create(bno_card);
-    lv_label_set_text(bno_data, "Pitch: 0.0 graus\\nRoll: 0.0 graus\\nYaw: 0.0 graus\\nTemp: -- C\\nStatus: Conectando...");
+    lv_label_set_text(bno_data, "Pitch: 0.0 deg\\nRoll: 0.0 deg\\nYaw: 0.0 deg\\nTemp: -- C\\nStatus: Connecting...");
     lv_obj_set_style_text_color(bno_data, lv_color_hex(UI_COLOR_ON_BACKGROUND), LV_PART_MAIN);
     lv_obj_set_style_text_font(bno_data, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_align(bno_data, LV_ALIGN_TOP_LEFT, 0, 25);
@@ -357,13 +363,13 @@ static void create_sensors_screen(void)
     apply_card_style(other_card);
     
     lv_obj_t *other_title = lv_label_create(other_card);
-    lv_label_set_text(other_title, LV_SYMBOL_SETTINGS " Outros Sensores");
+    lv_label_set_text(other_title, LV_SYMBOL_SETTINGS " Other Sensors");
     lv_obj_set_style_text_color(other_title, lv_color_hex(UI_COLOR_INFO), LV_PART_MAIN);
     lv_obj_set_style_text_font(other_title, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_align(other_title, LV_ALIGN_TOP_LEFT, 0, 0);
     
     lv_obj_t *other_data = lv_label_create(other_card);
-    lv_label_set_text(other_data, "Temperatura: -- C\\nUmidade: -- %\\nPressao: -- hPa\\nLuz: -- lux\\nI2C: Ativo");
+    lv_label_set_text(other_data, "Temperature: -- C\\nHumidity: -- %\\nPressure: -- hPa\\nLight: -- lux\\nI2C: Active");
     lv_obj_set_style_text_color(other_data, lv_color_hex(UI_COLOR_ON_BACKGROUND), LV_PART_MAIN);
     lv_obj_set_style_text_font(other_data, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_align(other_data, LV_ALIGN_TOP_LEFT, 0, 25);
@@ -383,7 +389,7 @@ static void create_settings_screen(void)
     
     // Título
     lv_obj_t *title = lv_label_create(screens[UI_SCREEN_SETTINGS]);
-    lv_label_set_text(title, "Configuracoes do Sistema");
+    lv_label_set_text(title, "System Settings");
     lv_obj_set_style_text_color(title, lv_color_hex(UI_COLOR_WARNING), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_16, LV_PART_MAIN);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
@@ -395,16 +401,16 @@ static void create_settings_screen(void)
     apply_card_style(config_list1);
     
     lv_obj_t *config_title1 = lv_label_create(config_list1);
-    lv_label_set_text(config_title1, "Configuracoes Basicas");
+    lv_label_set_text(config_title1, "Basic Settings");
     lv_obj_set_style_text_color(config_title1, lv_color_hex(UI_COLOR_ON_BACKGROUND), LV_PART_MAIN);
     lv_obj_set_style_text_font(config_title1, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_align(config_title1, LV_ALIGN_TOP_LEFT, 0, 0);
     
     const char *config_items1[] = {
-        "🔆 Brilho da Tela",
-        "� Volume do Sistema", 
-        "⏰ Data e Hora",
-        "🌙 Modo Noturno"
+        "* Screen Brightness",
+        "* System Volume", 
+        "* Date & Time",
+        "* Night Mode"
     };
     
     for (int i = 0; i < 4; i++) {
@@ -422,16 +428,16 @@ static void create_settings_screen(void)
     apply_card_style(config_list2);
     
     lv_obj_t *config_title2 = lv_label_create(config_list2);
-    lv_label_set_text(config_title2, "Configurações Avançadas");
+    lv_label_set_text(config_title2, "Advanced Settings");
     lv_obj_set_style_text_color(config_title2, lv_color_hex(UI_COLOR_ON_BACKGROUND), LV_PART_MAIN);
     lv_obj_set_style_text_font(config_title2, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_align(config_title2, LV_ALIGN_TOP_LEFT, 0, 0);
     
     const char *config_items2[] = {
-        "� Wi-Fi / Bluetooth",
-        "🔧 Calibração Sensores",
-        "💾 Backup/Restore", 
-        "🔄 Reset de Fábrica"
+        "* Wi-Fi / Bluetooth",
+        "* Sensor Calibration",
+        "* Backup/Restore", 
+        "* Factory Reset"
     };
     
     for (int i = 0; i < 4; i++) {
@@ -457,7 +463,7 @@ static void create_about_screen(void)
     
     // Título
     lv_obj_t *title = lv_label_create(screens[UI_SCREEN_ABOUT]);
-    lv_label_set_text(title, "Sobre o Sistema");
+    lv_label_set_text(title, "About System");
     lv_obj_set_style_text_color(title, lv_color_hex(UI_COLOR_INFO), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_16, LV_PART_MAIN);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
@@ -469,13 +475,13 @@ static void create_about_screen(void)
     apply_card_style(info_card);
     
     lv_obj_t *info_title = lv_label_create(info_card);
-    lv_label_set_text(info_title, "Informações do Hardware");
+    lv_label_set_text(info_title, "Hardware Information");
     lv_obj_set_style_text_color(info_title, lv_color_hex(UI_COLOR_ON_BACKGROUND), LV_PART_MAIN);
     lv_obj_set_style_text_font(info_title, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_align(info_title, LV_ALIGN_TOP_LEFT, 0, 0);
     
     lv_obj_t *info_text = lv_label_create(info_card);
-    lv_label_set_text(info_text, "🖥️ ESP32-S3\\n📱 Display: 480x320\\n💾 Flash: 16MB\\n🔗 Wi-Fi/Bluetooth\\n⚡ 240MHz Dual Core");
+    lv_label_set_text(info_text, "* ESP32-S3\\n* Display: 480x320\\n* Flash: 16MB\\n* Wi-Fi/Bluetooth\\n* 240MHz Dual Core");
     lv_obj_set_style_text_color(info_text, lv_color_hex(UI_COLOR_ON_BACKGROUND), LV_PART_MAIN);
     lv_obj_set_style_text_font(info_text, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_align(info_text, LV_ALIGN_TOP_LEFT, 0, 25);
@@ -487,13 +493,13 @@ static void create_about_screen(void)
     apply_card_style(sw_card);
     
     lv_obj_t *sw_title = lv_label_create(sw_card);
-    lv_label_set_text(sw_title, "Informações do Software");
+    lv_label_set_text(sw_title, "Software Information");
     lv_obj_set_style_text_color(sw_title, lv_color_hex(UI_COLOR_ON_BACKGROUND), LV_PART_MAIN);
     lv_obj_set_style_text_font(sw_title, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_align(sw_title, LV_ALIGN_TOP_LEFT, 0, 0);
     
     lv_obj_t *sw_text = lv_label_create(sw_card);
-    lv_label_set_text(sw_text, "🚀 OS v1.0.0\\n🎨 LVGL v8.3\\n⚙️ ESP-IDF v5.1\\n📅 Build: 2024\\n👨‍💻 Embedded OS");
+    lv_label_set_text(sw_text, "* OS v1.0.0\\n* LVGL v8.3\\n* ESP-IDF v5.1\\n* Build: 2024\\n* Embedded OS");
     lv_obj_set_style_text_color(sw_text, lv_color_hex(UI_COLOR_ON_BACKGROUND), LV_PART_MAIN);
     lv_obj_set_style_text_font(sw_text, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_align(sw_text, LV_ALIGN_TOP_LEFT, 0, 25);

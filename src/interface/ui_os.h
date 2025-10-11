@@ -19,14 +19,14 @@ extern "C" {
 // CONSTANTES DE DESIGN MODERNO
 // =============================================================================
 
-// Cores do tema moderno (Material You)
+// Cores do tema moderno (Material You - Light Theme)
 #define UI_COLOR_PRIMARY           0x6750A4    // Purple modern
 #define UI_COLOR_PRIMARY_VARIANT   0x4F378B    // Purple dark
 #define UI_COLOR_SECONDARY         0x625B71    // Purple gray
-#define UI_COLOR_BACKGROUND        0x121212    // Dark background
-#define UI_COLOR_SURFACE           0x1C1B1F    // Card surface
+#define UI_COLOR_BACKGROUND        0xFFFBFE    // Light background
+#define UI_COLOR_SURFACE           0xFFFFFF    // White surface
 #define UI_COLOR_ON_PRIMARY        0xFFFFFF    // White text
-#define UI_COLOR_ON_BACKGROUND     0xE6E1E5    // Light text
+#define UI_COLOR_ON_BACKGROUND     0x1C1B1F    // Dark text
 #define UI_COLOR_SUCCESS           0x4CAF50    // Green
 #define UI_COLOR_WARNING           0xFF9800    // Orange
 #define UI_COLOR_ERROR             0xF44336    // Red

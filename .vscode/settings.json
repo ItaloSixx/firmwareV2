@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "lvgl.h": "c"
+        "lvgl.h": "c",
+        "freertos.h": "c",
+        "sensors.h": "c"
     }
 }
