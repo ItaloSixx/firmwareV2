@@ -10,7 +10,7 @@
 
 // Callbacks dos botões
 static void button_sensors_cb(lv_event_t *e);
-static void button_system_cb(lv_event_t *e);
+static void button_measurement_cb(lv_event_t *e);
 static void button_config_cb(lv_event_t *e);
 static void button_about_cb(lv_event_t *e);
 
@@ -54,7 +54,7 @@ lv_obj_t *screen_home_create(lv_obj_t *parent)
     // Textos dos botões
     const char* button_texts[] = {
         "SENSORS",
-        "SYSTEM", 
+        "MEDICAO", 
         "CONFIG",
         "ABOUT"
     };
@@ -62,7 +62,7 @@ lv_obj_t *screen_home_create(lv_obj_t *parent)
     // Callbacks dos botões
     lv_event_cb_t button_callbacks[] = {
         button_sensors_cb,
-        button_system_cb,
+        button_measurement_cb,
         button_config_cb,
         button_about_cb
     };
@@ -125,11 +125,11 @@ static void button_sensors_cb(lv_event_t *e)
     }
 }
 
-static void button_system_cb(lv_event_t *e)
+static void button_measurement_cb(lv_event_t *e)
 {
     (void)e;
     if (g_navigation_callback) {
-        g_navigation_callback(UI_SCREEN_SENSORS); // Por enquanto vai para sensores
+        g_navigation_callback(UI_SCREEN_MEASUREMENT);
     }
 }
 
