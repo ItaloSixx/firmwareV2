@@ -1,0 +1,692 @@
+/**
+ * @file ui_manager.c
+ * @brief Implementação do gerenciador principal da interfstatic void datetime_navigation_callback(const char *screen_name);
+static void save_datetime_to_nvs(int hour, int minute, int day, int month, int year);
+static void load_datetime_from_nvs(void);ce
+ * @author ItaloSixx
+ * @date 2025
+ */
+
+#include "ui_manager.h"
+#include "styles/ui_styles.h"
+#include "screens/screen_home.h"
+#include "screens/measurement/measurement_main.h"
+#include "screens/settings/settings_main.h"
+#include "screens/settings/datetime/datetime_main.h"
+#include "components/ui_components.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <esp_log.h>
+#include <nvs_flash.h>
+#include <nvs.h>
+#include <time.h>
+
+static const char *TAG = "UI_MANAGER";
+
+// Instância global do gerenciador
+static ui_manager_t *g_manager = NULL;
+
+// Variáveis estáticas para os pickers
+static lv_obj_t *g_hour_roller = NULL;
+static lv_obj_t *g_minute_roller = NULL;
+static lv_obj_t *g_day_roller = NULL;
+static lv_obj_t *g_month_roller = NULL;
+static lv_obj_t *g_year_roller = NULL;
+
+// =============================================================================
+// CALLBACKS INTERNOS
+// =============================================================================
+
+static void navigation_callback(ui_screen_t screen)
+{
+    if (g_manager) {
+        ui_manager_set_screen(g_manager, screen);
+    }
+}
+
+static void ui_manager_back_to_settings(void)
+{
+    if (!g_manager) return;
+    
+    ESP_LOGI(TAG, "Returning to settings screen");
+    
+    // Remover sub-tela atual
+    if (g_manager->current_subscreen) {
+        lv_obj_del(g_manager->current_subscreen);
+        g_manager->current_subscreen = NULL;
+    }
+    
+    // Mostrar a tela de settings novamente
+    if (g_manager->screens[UI_SCREEN_SETTINGS]) {
+        lv_obj_clear_flag(g_manager->screens[UI_SCREEN_SETTINGS], LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void close_modal_callback(lv_event_t *e)
+{
+    lv_obj_t *modal = lv_obj_get_parent(lv_obj_get_parent((lv_obj_t*)lv_event_get_target(e)));
+    lv_obj_del(modal);
+}
+
+// Declarações das funções
+static void create_time_picker_modal(void);
+static void create_date_picker_modal(void);
+static void save_time_callback(lv_event_t *e);
+static void save_date_callback(lv_event_t *e);
+
+static void settings_navigation_callback(const char *screen_name)
+{
+    if (!g_manager || !screen_name) return;
+    
+    ESP_LOGI(TAG, "Settings navigation to: %s", screen_name);
+    
+    if (strcmp(screen_name, "datetime_main") == 0) {
+        ESP_LOGI(TAG, "Navigating to datetime settings");
+        ui_manager_navigate_to_settings(screen_name);
+    }
+}
+
+static void datetime_navigation_callback(const char *screen_name)
+{
+    if (!g_manager || !screen_name) return;
+    
+    ESP_LOGI(TAG, "DateTime navigation to: %s", screen_name);
+    
+    if (strcmp(screen_name, "time_picker") == 0) {
+        ESP_LOGI(TAG, "Opening time picker");
+        create_time_picker_modal();
+    } else if (strcmp(screen_name, "date_picker") == 0) {
+        ESP_LOGI(TAG, "Opening date picker");
+        create_date_picker_modal();
+    }
+}
+
+static void save_datetime_to_nvs(int hour, int minute, int day, int month, int year)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("datetime", NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK) {
+        nvs_set_i32(nvs_handle, "hour", hour);
+        nvs_set_i32(nvs_handle, "minute", minute);
+        nvs_set_i32(nvs_handle, "day", day);
+        nvs_set_i32(nvs_handle, "month", month);
+        nvs_set_i32(nvs_handle, "year", year);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+        ESP_LOGI(TAG, "DateTime saved to NVS: %02d/%02d/%04d %02d:%02d", day, month, year, hour, minute);
+    } else {
+        ESP_LOGE(TAG, "Error opening NVS handle for datetime: %s", esp_err_to_name(err));
+    }
+}
+
+static void load_datetime_from_nvs(void)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("datetime", NVS_READONLY, &nvs_handle);
+    if (err == ESP_OK) {
+        int32_t hour = 12, minute = 0, day = 1, month = 1, year = 2024;
+        
+        nvs_get_i32(nvs_handle, "hour", &hour);
+        nvs_get_i32(nvs_handle, "minute", &minute);
+        nvs_get_i32(nvs_handle, "day", &day);
+        nvs_get_i32(nvs_handle, "month", &month);
+        nvs_get_i32(nvs_handle, "year", &year);
+        
+        nvs_close(nvs_handle);
+        
+        // Aplicar a data/hora carregada do sistema
+        datetime_set_current((int)hour, (int)minute, (int)day, (int)month, (int)year);
+        ESP_LOGI(TAG, "DateTime loaded from NVS: %02d/%02d/%04d %02d:%02d", (int)day, (int)month, (int)year, (int)hour, (int)minute);
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGI(TAG, "No saved datetime found in NVS, using defaults");
+    } else {
+        ESP_LOGE(TAG, "Error opening NVS handle for datetime: %s", esp_err_to_name(err));
+    }
+}
+
+static void save_time_callback(lv_event_t *e)
+{
+    if (!g_hour_roller || !g_minute_roller) {
+        ESP_LOGW(TAG, "Hour or minute roller is NULL");
+        close_modal_callback(e);
+        return;
+    }
+    
+    // Obter valores selecionados
+    uint16_t hour = lv_roller_get_selected(g_hour_roller);
+    uint16_t minute = lv_roller_get_selected(g_minute_roller);
+    
+    ESP_LOGI(TAG, "Time selected: %02d:%02d", hour, minute);
+    
+    // Atualizar a tela de datetime main se estiver visível
+    if (g_manager && g_manager->current_subscreen) {
+        datetime_main_set_time(hour, minute);
+    }
+    
+    // Atualizar a status bar com data e hora atual
+    if (g_manager && g_manager->status_bar) {
+        // Obter a data atual para combinar com a nova hora
+        int current_hour, current_minute, current_day, current_month, current_year;
+        datetime_get_current(&current_hour, &current_minute, &current_day, &current_month, &current_year);
+        
+        char datetime_str[32];
+        sprintf(datetime_str, "%02d %s %04d %02d:%02d", 
+                current_day, 
+                (current_month == 1) ? "Jan" : (current_month == 2) ? "Feb" : 
+                (current_month == 3) ? "Mar" : (current_month == 4) ? "Apr" :
+                (current_month == 5) ? "May" : (current_month == 6) ? "Jun" :
+                (current_month == 7) ? "Jul" : (current_month == 8) ? "Aug" :
+                (current_month == 9) ? "Sep" : (current_month == 10) ? "Oct" :
+                (current_month == 11) ? "Nov" : "Dec",
+                current_year, hour, minute);
+        ui_update_status_time(g_manager->status_bar, datetime_str);
+    }
+    
+    // Obter data atual e salvar no NVS
+    int current_hour, current_minute, current_day, current_month, current_year;
+    datetime_get_current(&current_hour, &current_minute, &current_day, &current_month, &current_year);
+    save_datetime_to_nvs(hour, minute, current_day, current_month, current_year);
+    
+    // Fechar o modal
+    close_modal_callback(e);
+}
+
+static void save_date_callback(lv_event_t *e)
+{
+    if (!g_day_roller || !g_month_roller || !g_year_roller) {
+        ESP_LOGW(TAG, "Day, month or year roller is NULL");
+        close_modal_callback(e);
+        return;
+    }
+    
+    // Obter valores selecionados
+    uint16_t day = lv_roller_get_selected(g_day_roller) + 1; // +1 porque o roller começa em 0
+    uint16_t month = lv_roller_get_selected(g_month_roller) + 1; // +1 porque o roller começa em 0  
+    uint16_t year = lv_roller_get_selected(g_year_roller) + 2020; // +2020 porque começa em 2020
+    
+    ESP_LOGI(TAG, "Date selected: %02d/%02d/%04d", day, month, year);
+    
+    // Atualizar a tela de datetime main se estiver visível
+    if (g_manager && g_manager->current_subscreen) {
+        datetime_main_set_date(day, month, year);
+    }
+    
+    // Atualizar a status bar com nova data
+    if (g_manager && g_manager->status_bar) {
+        // Obter a hora atual para combinar com a nova data
+        int current_hour, current_minute, current_day, current_month, current_year;
+        datetime_get_current(&current_hour, &current_minute, &current_day, &current_month, &current_year);
+        
+        char datetime_str[32];
+        sprintf(datetime_str, "%02d %s %04d %02d:%02d", 
+                day, 
+                (month == 1) ? "Jan" : (month == 2) ? "Feb" : 
+                (month == 3) ? "Mar" : (month == 4) ? "Apr" :
+                (month == 5) ? "May" : (month == 6) ? "Jun" :
+                (month == 7) ? "Jul" : (month == 8) ? "Aug" :
+                (month == 9) ? "Sep" : (month == 10) ? "Oct" :
+                (month == 11) ? "Nov" : "Dec",
+                year, current_hour, current_minute);
+        ui_update_status_time(g_manager->status_bar, datetime_str);
+    }
+    
+    // Obter hora atual e salvar no NVS  
+    int current_hour, current_minute, current_day, current_month, current_year;
+    datetime_get_current(&current_hour, &current_minute, &current_day, &current_month, &current_year);
+    save_datetime_to_nvs(current_hour, current_minute, day, month, year);
+    
+    // Fechar o modal
+    close_modal_callback(e);
+}
+
+static void create_time_picker_modal(void)
+{
+    // Criar modal
+    lv_obj_t *modal = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(modal, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(modal, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(modal, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_clear_flag(modal, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Container do time picker
+    lv_obj_t *picker_container = lv_obj_create(modal);
+    lv_obj_set_size(picker_container, 300, 200);
+    lv_obj_center(picker_container);
+    lv_obj_set_style_bg_color(picker_container, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_radius(picker_container, 10, LV_PART_MAIN);
+
+    // Título
+    lv_obj_t *title = lv_label_create(picker_container);
+    lv_label_set_text(title, "Selecionar Hora");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+
+    // Roller para horas (0-23)
+    g_hour_roller = lv_roller_create(picker_container);
+    lv_roller_set_options(g_hour_roller, "00\n01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23", LV_ROLLER_MODE_INFINITE);
+    lv_obj_set_width(g_hour_roller, 60);
+    lv_obj_align(g_hour_roller, LV_ALIGN_CENTER, -40, 0);
+    lv_roller_set_visible_row_count(g_hour_roller, 3);
+
+    // Label ":"
+    lv_obj_t *colon = lv_label_create(picker_container);
+    lv_label_set_text(colon, ":");
+    lv_obj_set_style_text_font(colon, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_align(colon, LV_ALIGN_CENTER, 0, 0);
+
+    // Roller para minutos (0-59)
+    g_minute_roller = lv_roller_create(picker_container);
+    char min_options[300] = "";
+    for (int i = 0; i < 60; i++) {
+        char temp[5];
+        sprintf(temp, "%02d\n", i);
+        strcat(min_options, temp);
+    }
+    min_options[strlen(min_options) - 1] = '\0'; // Remover última quebra de linha
+    lv_roller_set_options(g_minute_roller, min_options, LV_ROLLER_MODE_INFINITE);
+    lv_obj_set_width(g_minute_roller, 60);
+    lv_obj_align(g_minute_roller, LV_ALIGN_CENTER, 40, 0);
+    lv_roller_set_visible_row_count(g_minute_roller, 3);
+
+    // Botões OK e Cancel
+    lv_obj_t *btn_ok = lv_btn_create(picker_container);
+    lv_obj_set_size(btn_ok, 80, 35);
+    lv_obj_align(btn_ok, LV_ALIGN_BOTTOM_RIGHT, -10, -10);
+    lv_obj_t *btn_ok_label = lv_label_create(btn_ok);
+    lv_label_set_text(btn_ok_label, "OK");
+    lv_obj_center(btn_ok_label);
+
+    lv_obj_t *btn_cancel = lv_btn_create(picker_container);
+    lv_obj_set_size(btn_cancel, 80, 35);
+    lv_obj_align(btn_cancel, LV_ALIGN_BOTTOM_LEFT, 10, -10);
+    lv_obj_t *btn_cancel_label = lv_label_create(btn_cancel);
+    lv_label_set_text(btn_cancel_label, "Cancel");
+    lv_obj_center(btn_cancel_label);
+
+    // Eventos para fechar o modal
+    lv_obj_add_event_cb(btn_ok, save_time_callback, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(btn_cancel, close_modal_callback, LV_EVENT_CLICKED, NULL);
+}
+
+static void create_date_picker_modal(void)
+{
+    // Criar modal
+    lv_obj_t *modal = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(modal, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(modal, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(modal, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_clear_flag(modal, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Container do date picker
+    lv_obj_t *picker_container = lv_obj_create(modal);
+    lv_obj_set_size(picker_container, 350, 200);
+    lv_obj_center(picker_container);
+    lv_obj_set_style_bg_color(picker_container, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_radius(picker_container, 10, LV_PART_MAIN);
+
+    // Título
+    lv_obj_t *title = lv_label_create(picker_container);
+    lv_label_set_text(title, "Selecionar Data");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+
+    // Roller para dia (1-31)
+    g_day_roller = lv_roller_create(picker_container);
+    char day_options[100] = "";
+    for (int i = 1; i <= 31; i++) {
+        char temp[5];
+        sprintf(temp, "%02d\n", i);
+        strcat(day_options, temp);
+    }
+    day_options[strlen(day_options) - 1] = '\0';
+    lv_roller_set_options(g_day_roller, day_options, LV_ROLLER_MODE_NORMAL);
+    lv_obj_set_width(g_day_roller, 60);
+    lv_obj_align(g_day_roller, LV_ALIGN_CENTER, -80, 0);
+    lv_roller_set_visible_row_count(g_day_roller, 3);
+
+    // Roller para mês
+    g_month_roller = lv_roller_create(picker_container);
+    lv_roller_set_options(g_month_roller, "01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n11\n12", LV_ROLLER_MODE_NORMAL);
+    lv_obj_set_width(g_month_roller, 60);
+    lv_obj_align(g_month_roller, LV_ALIGN_CENTER, 0, 0);
+    lv_roller_set_visible_row_count(g_month_roller, 3);
+
+    // Roller para ano
+    g_year_roller = lv_roller_create(picker_container);
+    char year_options[200] = "";
+    for (int i = 2020; i <= 2030; i++) {
+        char temp[8];
+        sprintf(temp, "%d\n", i);
+        strcat(year_options, temp);
+    }
+    year_options[strlen(year_options) - 1] = '\0';
+    lv_roller_set_options(g_year_roller, year_options, LV_ROLLER_MODE_NORMAL);
+    lv_obj_set_width(g_year_roller, 80);
+    lv_obj_align(g_year_roller, LV_ALIGN_CENTER, 80, 0);
+    lv_roller_set_visible_row_count(g_year_roller, 3);
+
+    // Botões OK e Cancel
+    lv_obj_t *btn_ok = lv_btn_create(picker_container);
+    lv_obj_set_size(btn_ok, 80, 35);
+    lv_obj_align(btn_ok, LV_ALIGN_BOTTOM_RIGHT, -10, -10);
+    lv_obj_t *btn_ok_label = lv_label_create(btn_ok);
+    lv_label_set_text(btn_ok_label, "OK");
+    lv_obj_center(btn_ok_label);
+
+    lv_obj_t *btn_cancel = lv_btn_create(picker_container);
+    lv_obj_set_size(btn_cancel, 80, 35);
+    lv_obj_align(btn_cancel, LV_ALIGN_BOTTOM_LEFT, 10, -10);
+    lv_obj_t *btn_cancel_label = lv_label_create(btn_cancel);
+    lv_label_set_text(btn_cancel_label, "Cancel");
+    lv_obj_center(btn_cancel_label);
+
+    // Eventos para fechar o modal
+    lv_obj_add_event_cb(btn_ok, save_date_callback, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(btn_cancel, close_modal_callback, LV_EVENT_CLICKED, NULL);
+}
+
+// =============================================================================
+// FUNÇÕES PRIVADAS
+// =============================================================================
+
+static void create_screen(ui_manager_t *manager, ui_screen_t screen_type)
+{
+    if (!manager || !manager->content_area) return;
+    
+    // Destruir tela anterior se existir
+    if (manager->screens[screen_type]) {
+        lv_obj_del(manager->screens[screen_type]);
+        manager->screens[screen_type] = NULL;
+    }
+    
+    // Criar nova tela baseada no tipo
+    switch (screen_type) {
+        case UI_SCREEN_HOME:
+            manager->screens[screen_type] = screen_home_create(manager->content_area);
+            screen_home_set_navigation_callback(navigation_callback);
+            break;
+        case UI_SCREEN_SENSORS:
+            manager->screens[screen_type] = screen_sensors_create(manager->content_area);
+            break;
+        case UI_SCREEN_MEASUREMENT:
+            manager->screens[screen_type] = measurement_main_create(manager->content_area);
+            break;
+        case UI_SCREEN_SETTINGS:
+            manager->screens[screen_type] = screen_settings_create(manager->content_area);
+            settings_main_set_navigation_callback(settings_navigation_callback);
+            break;
+        case UI_SCREEN_ABOUT:
+            manager->screens[screen_type] = screen_about_create(manager->content_area);
+            break;
+        default:
+            ESP_LOGW(TAG, "Unknown screen type: %d", screen_type);
+            return;
+    }
+    
+    ESP_LOGI(TAG, "Created screen: %d", screen_type);
+}
+
+static void hide_all_screens(ui_manager_t *manager)
+{
+    for (int i = 0; i < UI_SCREEN_COUNT; i++) {
+        if (manager->screens[i]) {
+            lv_obj_add_flag(manager->screens[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+// =============================================================================
+// FUNÇÕES PÚBLICAS
+// =============================================================================
+
+ui_manager_t *ui_manager_init(void)
+{
+    // Evitar dupla inicialização
+    if (g_manager) {
+        ESP_LOGW(TAG, "UI Manager already initialized");
+        return g_manager;
+    }
+    
+    ui_manager_t *manager = malloc(sizeof(ui_manager_t));
+    if (!manager) {
+        ESP_LOGE(TAG, "Failed to allocate memory for UI manager");
+        return NULL;
+    }
+    
+    memset(manager, 0, sizeof(ui_manager_t));
+    g_manager = manager;
+    
+    // Container principal
+    manager->main_container = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(manager->main_container, UI_SCREEN_WIDTH, UI_SCREEN_HEIGHT);
+    lv_obj_center(manager->main_container);
+    ui_apply_container_style(manager->main_container);
+    
+    // Criar barra de status
+    manager->status_bar = ui_create_status_bar(manager->main_container);
+    if (!manager->status_bar) {
+        ESP_LOGE(TAG, "Failed to create status bar");
+        free(manager);
+        g_manager = NULL;
+        return NULL;
+    }
+    
+    // Criar área de conteúdo
+    manager->content_area = ui_create_content_area(manager->main_container);
+    if (!manager->content_area) {
+        ESP_LOGE(TAG, "Failed to create content area");
+        ui_destroy_status_bar(manager->status_bar);
+        free(manager);
+        g_manager = NULL;
+        return NULL;
+    }
+    
+    // Criar barra de navegação
+    manager->nav_bar = ui_create_nav_bar(manager->main_container, navigation_callback);
+    if (!manager->nav_bar) {
+        ESP_LOGE(TAG, "Failed to create navigation bar");
+        ui_destroy_status_bar(manager->status_bar);
+        free(manager);
+        g_manager = NULL;
+        return NULL;
+    }
+    
+    // Configurar timezone como UTC para evitar problemas de offset
+    setenv("TZ", "UTC0", 1);
+    tzset();
+    
+    // Carregar data/hora salva do NVS
+    load_datetime_from_nvs();
+    
+    // Inicializar com tela home
+    manager->active_screen = UI_SCREEN_HOME;
+    create_screen(manager, UI_SCREEN_HOME);
+    ui_update_nav_active(manager->nav_bar, UI_SCREEN_HOME);
+    
+    // Inicializar dados padrão
+    strcpy(manager->system_state.current_time, "10 Apr 2020 15:36");
+    manager->system_state.wifi_connected = false;
+    manager->system_state.bluetooth_connected = false;
+    manager->system_state.battery_level = 85;
+    
+    ESP_LOGI(TAG, "UI Manager initialized successfully");
+    return manager;
+}
+
+void ui_manager_update(ui_manager_t *manager)
+{
+    if (!manager) return;
+    
+    // Atualizar data e horário na barra de status com hora do sistema
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    
+    char datetime_str[32];
+    strftime(datetime_str, sizeof(datetime_str), "%d %b %Y %H:%M", &timeinfo);
+    ui_update_status_time(manager->status_bar, datetime_str);
+    
+    // Atualizar tela ativa se necessário
+    switch (manager->active_screen) {
+        case UI_SCREEN_HOME:
+            if (manager->screens[UI_SCREEN_HOME]) {
+                screen_home_update(manager->screens[UI_SCREEN_HOME]);
+            }
+            break;
+        case UI_SCREEN_SENSORS:
+            if (manager->screens[UI_SCREEN_SENSORS]) {
+                screen_sensors_update(manager->screens[UI_SCREEN_SENSORS], &manager->sensor_data);
+            }
+            break;
+        case UI_SCREEN_MEASUREMENT:
+            if (manager->screens[UI_SCREEN_MEASUREMENT]) {
+                measurement_main_update(manager->screens[UI_SCREEN_MEASUREMENT]);
+            }
+            break;
+        case UI_SCREEN_SETTINGS:
+            if (manager->screens[UI_SCREEN_SETTINGS]) {
+                screen_settings_update(manager->screens[UI_SCREEN_SETTINGS]);
+            }
+            break;
+        case UI_SCREEN_ABOUT:
+            if (manager->screens[UI_SCREEN_ABOUT]) {
+                screen_about_update(manager->screens[UI_SCREEN_ABOUT]);
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+void ui_manager_set_screen(ui_manager_t *manager, ui_screen_t screen)
+{
+    if (!manager || screen >= UI_SCREEN_COUNT) return;
+    
+    if (manager->active_screen == screen) {
+        ESP_LOGD(TAG, "Screen %d already active", screen);
+        return;
+    }
+    
+    ESP_LOGI(TAG, "Switching to screen: %d", screen);
+    
+    // Esconder todas as telas
+    hide_all_screens(manager);
+    
+    // Criar tela se não existir
+    if (!manager->screens[screen]) {
+        create_screen(manager, screen);
+    }
+    
+    // Mostrar tela ativa
+    if (manager->screens[screen]) {
+        lv_obj_clear_flag(manager->screens[screen], LV_OBJ_FLAG_HIDDEN);
+        manager->current_screen = manager->screens[screen];
+    }
+    
+    // Atualizar navegação
+    manager->active_screen = screen;
+    ui_update_nav_active(manager->nav_bar, screen);
+}
+
+ui_screen_t ui_manager_get_current_screen(ui_manager_t *manager)
+{
+    return manager ? manager->active_screen : UI_SCREEN_HOME;
+}
+
+void ui_manager_update_sensor_data(ui_manager_t *manager, const sensor_data_t *data)
+{
+    if (!manager || !data) return;
+    
+    memcpy(&manager->sensor_data, data, sizeof(sensor_data_t));
+    
+    // Se a tela de sensores estiver ativa, atualizar imediatamente
+    if (manager->active_screen == UI_SCREEN_SENSORS && manager->screens[UI_SCREEN_SENSORS]) {
+        screen_sensors_update(manager->screens[UI_SCREEN_SENSORS], data);
+    }
+}
+
+void ui_manager_update_system_state(ui_manager_t *manager, const ui_system_state_t *state)
+{
+    if (!manager || !state) return;
+    
+    memcpy(&manager->system_state, state, sizeof(ui_system_state_t));
+}
+
+void ui_manager_update_system_stats(ui_manager_t *manager, const ui_system_stats_t *stats)
+{
+    if (!manager || !stats) return;
+    
+    memcpy(&manager->system_stats, stats, sizeof(ui_system_stats_t));
+}
+
+void ui_manager_show_notification(ui_manager_t *manager, const char *message, const char *type)
+{
+    if (!manager || !message) return;
+    
+    // TODO: Implementar sistema de notificações
+    ESP_LOGI(TAG, "Notification [%s]: %s", type ? type : "INFO", message);
+}
+
+void ui_manager_destroy(ui_manager_t *manager)
+{
+    if (!manager) return;
+    
+    // Destruir todas as telas
+    for (int i = 0; i < UI_SCREEN_COUNT; i++) {
+        if (manager->screens[i]) {
+            lv_obj_del(manager->screens[i]);
+        }
+    }
+    
+    // Destruir componentes
+    ui_destroy_nav_bar(manager->nav_bar);
+    ui_destroy_status_bar(manager->status_bar);
+    
+    if (manager->main_container) {
+        lv_obj_del(manager->main_container);
+    }
+    
+    free(manager);
+    g_manager = NULL;
+    
+    ESP_LOGI(TAG, "UI Manager destroyed");
+}
+
+void ui_manager_navigate_to_settings(const char *screen_name)
+{
+    if (!g_manager || !screen_name) {
+        ESP_LOGE(TAG, "Invalid parameters for settings navigation");
+        return;
+    }
+    
+    ESP_LOGI(TAG, "Navigating to datetime settings");
+    
+    // Esconder a tela de settings atual
+    if (g_manager->screens[UI_SCREEN_SETTINGS]) {
+        lv_obj_add_flag(g_manager->screens[UI_SCREEN_SETTINGS], LV_OBJ_FLAG_HIDDEN);
+    }
+    
+    // Remover sub-tela atual se existir
+    if (g_manager->current_subscreen) {
+        lv_obj_del(g_manager->current_subscreen);
+        g_manager->current_subscreen = NULL;
+    }
+    
+    // Criar a nova sub-tela baseada no nome
+    if (strcmp(screen_name, "datetime_main") == 0) {
+        g_manager->current_subscreen = datetime_main_create(g_manager->content_area);
+        if (g_manager->current_subscreen) {
+            ESP_LOGI(TAG, "Date/Time screen created successfully");
+            // Configurar callback para voltar à tela de settings
+            datetime_main_set_back_callback(ui_manager_back_to_settings);
+            // Configurar callback para navegação dentro da tela datetime
+            datetime_main_set_navigation_callback(datetime_navigation_callback);
+        } else {
+            ESP_LOGE(TAG, "Failed to create Date/Time screen");
+        }
+    } else {
+        ESP_LOGW(TAG, "Unknown settings screen: %s", screen_name);
+    }
+}

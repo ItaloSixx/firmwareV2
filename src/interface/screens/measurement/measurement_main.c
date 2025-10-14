@@ -8,12 +8,19 @@
 #include "measurement_main.h"
 #include "../../styles/ui_styles.h"
 #include "../../../sensors/lidar_tf_mini.h"
+#include "../../../config.h"
 #include <esp_log.h>
 #include <esp_random.h>
+#include <esp_timer.h>
+#include <driver/gpio.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <driver/gpio.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/queue.h>
 
 static const char *TAG = "MEASUREMENT";
 
@@ -24,37 +31,58 @@ static lv_obj_t *g_status_label = NULL;
 static lv_obj_t *g_instruction_label = NULL;
 static lv_obj_t *g_distance_label = NULL;
 static lv_obj_t *g_result_panel = NULL;
-static lv_obj_t *g_measure_btn = NULL;
 static lv_obj_t *g_save_btn = NULL;
+static lv_obj_t *g_cancel_btn = NULL;
 static lv_timer_t *g_lidar_update_timer = NULL;
 
+// Widgets dinâmicos para cada medição
+static lv_obj_t *g_widget_horizontal = NULL;
+static lv_obj_t *g_widget_top = NULL;
+static lv_obj_t *g_widget_base = NULL;
+static lv_obj_t *g_widget_height1 = NULL;
+static lv_obj_t *g_widget_height2 = NULL;
+static lv_obj_t *g_widget_total = NULL;
+static lv_obj_t *g_widgets_container = NULL;
+
+// Controle do botão físico
+static bool g_button_pressed = false;
+static uint32_t g_last_button_time = 0;
+
 // Declarações de funções privadas
-static void measure_button_cb(lv_event_t *e);
 static void save_button_cb(lv_event_t *e);
-static void reset_button_cb(lv_event_t *e);
+static void cancel_button_cb(lv_event_t *e);
 static void update_ui_state(void);
-static void calculate_height(void);
 static float read_lidar_distance(void);
 static void update_result_display(void);
 static void feedback_timer_cb(lv_timer_t *timer);
-static void calculation_timer_cb(lv_timer_t *timer);
+// static void calculation_timer_cb(lv_timer_t *timer); // DESABILITADO - usando botão físico
 static void lidar_update_timer_cb(lv_timer_t *timer);
+static void create_horizontal_widget(void);
+static void create_top_widget(void);
+static void create_base_widget(void);
+static void calculate_height1(void);
+static void calculate_height2(void);
+static void calculate_total_height(void);
+static void show_action_buttons(void);
+static void clear_all_widgets(void);
+static bool check_button_press(void);
+static void show_error_feedback(const char *message);
 
 // Textos das instruções para cada estado
 static const char* get_instruction_text(plant_measurement_state_t state) {
     switch (state) {
         case PLANT_MEASUREMENT_STATE_IDLE:
-            return "Posicione o dispositivo e inicie a medicao";
+            return "Pressione o botao fisico para iniciar medicao";
         case PLANT_MEASUREMENT_STATE_HORIZONTAL:
-            return "PASSO 1: Mire no CENTRO da planta (horizontal)";
+            return "PASSO 1: Mire no CENTRO da planta e pressione o botao";
         case PLANT_MEASUREMENT_STATE_TOP:
-            return "PASSO 2: Mire no TOPO da planta";
+            return "PASSO 2: Mire no TOPO da planta e pressione o botao";
         case PLANT_MEASUREMENT_STATE_BASE:
-            return "PASSO 3: Mire na BASE da planta";
+            return "PASSO 3: Mire na BASE da planta e pressione o botao";
         case PLANT_MEASUREMENT_STATE_CALCULATING:
             return "Calculando altura total...";
         case PLANT_MEASUREMENT_STATE_COMPLETE:
-            return "Medicao concluida com sucesso!";
+            return "Concluido! Salve ou pressione botao para nova medicao";
         default:
             return "Estado desconhecido";
     }
@@ -88,6 +116,9 @@ lv_obj_t *measurement_main_create(lv_obj_t *parent)
     lv_obj_set_style_bg_color(screen, lv_color_hex(UI_COLOR_BACKGROUND), LV_PART_MAIN);
     lv_obj_set_style_border_width(screen, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(screen, 0, LV_PART_MAIN);
+    
+    // Desabilitar scroll na tela de medição
+    lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
     // === CABEÇALHO ===
     lv_obj_t *header = lv_obj_create(screen);
@@ -154,22 +185,22 @@ lv_obj_t *measurement_main_create(lv_obj_t *parent)
     lv_obj_set_style_pad_all(g_result_panel, 15, LV_PART_MAIN);
     lv_obj_add_flag(g_result_panel, LV_OBJ_FLAG_HIDDEN); // Oculto inicialmente
 
-    // === BOTÕES DE AÇÃO ===
-    g_measure_btn = lv_btn_create(screen);
-    lv_obj_set_size(g_measure_btn, 120, 45);
-    lv_obj_set_pos(g_measure_btn, 20, 360);
-    lv_obj_set_style_bg_color(g_measure_btn, lv_color_hex(UI_COLOR_PRIMARY), LV_PART_MAIN);
-    lv_obj_add_event_cb(g_measure_btn, measure_button_cb, LV_EVENT_CLICKED, NULL);
+    // === CONTAINER PARA WIDGETS DINÂMICOS ===
+    g_widgets_container = lv_obj_create(screen);
+    lv_obj_set_size(g_widgets_container, 456, 120);
+    lv_obj_set_pos(g_widgets_container, 12, 230);
+    lv_obj_set_style_bg_opa(g_widgets_container, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(g_widgets_container, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(g_widgets_container, 5, LV_PART_MAIN);
+    lv_obj_set_flex_flow(g_widgets_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(g_widgets_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(g_widgets_container, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *measure_label = lv_label_create(g_measure_btn);
-    lv_label_set_text(measure_label, "MEDIR");
-    lv_obj_set_style_text_color(measure_label, lv_color_hex(UI_COLOR_ON_PRIMARY), LV_PART_MAIN);
-    lv_obj_set_style_text_font(measure_label, UI_FONT_MEDIUM, LV_PART_MAIN);
-    lv_obj_center(measure_label);
+    // === BOTÕES DE AÇÃO (OCULTOS INICIALMENTE) ===
 
     g_save_btn = lv_btn_create(screen);
-    lv_obj_set_size(g_save_btn, 100, 45);
-    lv_obj_set_pos(g_save_btn, 150, 360);
+    lv_obj_set_size(g_save_btn, 120, 45);
+    lv_obj_set_pos(g_save_btn, 100, 360);
     lv_obj_set_style_bg_color(g_save_btn, lv_color_hex(UI_COLOR_SUCCESS), LV_PART_MAIN);
     lv_obj_add_event_cb(g_save_btn, save_button_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_flag(g_save_btn, LV_OBJ_FLAG_HIDDEN); // Oculto inicialmente
@@ -180,35 +211,46 @@ lv_obj_t *measurement_main_create(lv_obj_t *parent)
     lv_obj_set_style_text_font(save_label, UI_FONT_SMALL, LV_PART_MAIN);
     lv_obj_center(save_label);
 
-    lv_obj_t *reset_btn = lv_btn_create(screen);
-    lv_obj_set_size(reset_btn, 100, 45);
-    lv_obj_set_pos(reset_btn, 260, 360);
-    lv_obj_set_style_bg_color(reset_btn, lv_color_hex(UI_COLOR_ERROR), LV_PART_MAIN);
-    lv_obj_add_event_cb(reset_btn, reset_button_cb, LV_EVENT_CLICKED, NULL);
+    g_cancel_btn = lv_btn_create(screen);
+    lv_obj_set_size(g_cancel_btn, 120, 45);
+    lv_obj_set_pos(g_cancel_btn, 250, 360);
+    lv_obj_set_style_bg_color(g_cancel_btn, lv_color_hex(UI_COLOR_ERROR), LV_PART_MAIN);
+    lv_obj_add_event_cb(g_cancel_btn, cancel_button_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(g_cancel_btn, LV_OBJ_FLAG_HIDDEN); // Oculto inicialmente
 
-    lv_obj_t *reset_label = lv_label_create(reset_btn);
-    lv_label_set_text(reset_label, "RESET");
-    lv_obj_set_style_text_color(reset_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(reset_label, UI_FONT_SMALL, LV_PART_MAIN);
-    lv_obj_center(reset_label);
+    lv_obj_t *cancel_label = lv_label_create(g_cancel_btn);
+    lv_label_set_text(cancel_label, "CANCELAR");
+    lv_obj_set_style_text_color(cancel_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(cancel_label, UI_FONT_SMALL, LV_PART_MAIN);
+    lv_obj_center(cancel_label);
 
     // Resetar estado inicial
     g_state = PLANT_MEASUREMENT_STATE_IDLE;
     memset(&g_measurement, 0, sizeof(plant_measurement_t));
     update_ui_state();
 
-    // Iniciar timer para atualizar leitura do LiDAR em tempo real (a cada 500ms)
-    g_lidar_update_timer = lv_timer_create(lidar_update_timer_cb, 500, NULL);
+    // Configurar botão físico
+    gpio_config_t button_config = {
+        .pin_bit_mask = (1ULL << MEASUREMENT_BUTTON_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&button_config);
 
-    ESP_LOGI(TAG, "Measurement screen created successfully");
+    // Iniciar timer para atualizar leitura do LiDAR e monitorar botão (a cada 200ms para melhor responsividade)
+    g_lidar_update_timer = lv_timer_create(lidar_update_timer_cb, 200, NULL);
+
+    ESP_LOGI(TAG, "Measurement screen created successfully with physical button on GPIO %d", MEASUREMENT_BUTTON_PIN);
     return screen;
 }
 
 // === IMPLEMENTAÇÃO DOS CALLBACKS ===
 
-static void measure_button_cb(lv_event_t *e)
+static void process_button_press(void)
 {
-    (void)e;
+    ESP_LOGI(TAG, "Physical button pressed, current state: %d", g_state);
     
     switch (g_state) {
         case PLANT_MEASUREMENT_STATE_IDLE:
@@ -216,27 +258,60 @@ static void measure_button_cb(lv_event_t *e)
             break;
             
         case PLANT_MEASUREMENT_STATE_HORIZONTAL:
-            g_measurement.distance_horizontal = read_lidar_distance();
-            ESP_LOGI(TAG, "Horizontal distance: %.1f cm", g_measurement.distance_horizontal);
-            g_state = PLANT_MEASUREMENT_STATE_TOP;
+            {
+                float distance = read_lidar_distance();
+                if (distance > 0.0f) {
+                    g_measurement.distance_horizontal = distance;
+                    ESP_LOGI(TAG, "Horizontal distance captured: %.1f cm", g_measurement.distance_horizontal);
+                    create_horizontal_widget();
+                    g_state = PLANT_MEASUREMENT_STATE_TOP;
+                } else {
+                    ESP_LOGW(TAG, "Invalid LiDAR reading, try again");
+                    show_error_feedback("LiDAR sem sinal! Tente novamente");
+                }
+            }
             break;
             
         case PLANT_MEASUREMENT_STATE_TOP:
-            g_measurement.distance_to_top = read_lidar_distance();
-            ESP_LOGI(TAG, "Distance to top: %.1f cm", g_measurement.distance_to_top);
-            g_state = PLANT_MEASUREMENT_STATE_BASE;
+            {
+                float distance = read_lidar_distance();
+                if (distance > 0.0f) {
+                    g_measurement.distance_to_top = distance;
+                    ESP_LOGI(TAG, "Distance to top captured: %.1f cm", g_measurement.distance_to_top);
+                    create_top_widget();
+                    calculate_height1();
+                    g_state = PLANT_MEASUREMENT_STATE_BASE;
+                } else {
+                    ESP_LOGW(TAG, "Invalid LiDAR reading, try again");
+                    show_error_feedback("LiDAR sem sinal! Tente novamente");
+                }
+            }
             break;
             
         case PLANT_MEASUREMENT_STATE_BASE:
-            g_measurement.distance_to_base = read_lidar_distance();
-            ESP_LOGI(TAG, "Distance to base: %.1f cm", g_measurement.distance_to_base);
-            g_state = PLANT_MEASUREMENT_STATE_CALCULATING;
-            calculate_height();
+            {
+                float distance = read_lidar_distance();
+                if (distance > 0.0f) {
+                    g_measurement.distance_to_base = distance;
+                    ESP_LOGI(TAG, "Distance to base captured: %.1f cm", g_measurement.distance_to_base);
+                    create_base_widget();
+                    calculate_height2();
+                    calculate_total_height();
+                    g_state = PLANT_MEASUREMENT_STATE_COMPLETE;
+                } else {
+                    ESP_LOGW(TAG, "Invalid LiDAR reading, try again");
+                    show_error_feedback("LiDAR sem sinal! Tente novamente");
+                }
+            }
+            show_action_buttons();
             break;
             
         case PLANT_MEASUREMENT_STATE_COMPLETE:
-            g_state = PLANT_MEASUREMENT_STATE_IDLE;
+            // Permitir reiniciar nova medição após finalizar
+            ESP_LOGI(TAG, "Restarting new measurement...");
+            clear_all_widgets();
             memset(&g_measurement, 0, sizeof(plant_measurement_t));
+            g_state = PLANT_MEASUREMENT_STATE_HORIZONTAL;
             break;
             
         default:
@@ -266,19 +341,28 @@ static void save_button_cb(lv_event_t *e)
         lv_obj_set_style_text_color(feedback, lv_color_hex(UI_COLOR_SUCCESS), LV_PART_MAIN);
         lv_obj_align(feedback, LV_ALIGN_BOTTOM_MID, 0, -10);
         
+        // Resetar para nova medição após salvar
+        clear_all_widgets();
+        memset(&g_measurement, 0, sizeof(plant_measurement_t));
+        g_state = PLANT_MEASUREMENT_STATE_IDLE;
+        update_ui_state();
+        
         lv_timer_create(feedback_timer_cb, 2000, feedback);
     }
 }
 
-static void reset_button_cb(lv_event_t *e)
+static void cancel_button_cb(lv_event_t *e)
 {
     (void)e;
+    
+    ESP_LOGI(TAG, "Measurement cancelled");
+    
+    // Limpar todos os widgets dinâmicos
+    clear_all_widgets();
     
     g_state = PLANT_MEASUREMENT_STATE_IDLE;
     memset(&g_measurement, 0, sizeof(plant_measurement_t));
     update_ui_state();
-    
-    ESP_LOGI(TAG, "Measurement reset");
 }
 
 // === FUNÇÕES AUXILIARES ===
@@ -299,16 +383,35 @@ static void update_ui_state(void)
         
         switch (g_state) {
             case PLANT_MEASUREMENT_STATE_HORIZONTAL:
-                snprintf(dist_text, sizeof(dist_text), "Horizontal: %.1f cm", 
-                        g_measurement.distance_horizontal);
+                // Durante medição horizontal, mostrar LiDAR em tempo real
+                if (lidar_available && current_lidar.valid) {
+                    snprintf(dist_text, sizeof(dist_text), "Medindo Horizontal: %d cm (Pressione para capturar)", 
+                            current_lidar.distance);
+                } else {
+                    snprintf(dist_text, sizeof(dist_text), "Medindo Horizontal: -- cm (Sem sinal)");
+                }
                 break;
             case PLANT_MEASUREMENT_STATE_TOP:
-                snprintf(dist_text, sizeof(dist_text), "Ao topo: %.1f cm", 
-                        g_measurement.distance_to_top);
+                // Durante medição do topo, mostrar LiDAR em tempo real
+                if (lidar_available && current_lidar.valid) {
+                    snprintf(dist_text, sizeof(dist_text), "Medindo ao Topo: %d cm (Pressione para capturar)", 
+                            current_lidar.distance);
+                } else {
+                    snprintf(dist_text, sizeof(dist_text), "Medindo ao Topo: -- cm (Sem sinal)");
+                }
                 break;
             case PLANT_MEASUREMENT_STATE_BASE:
-                snprintf(dist_text, sizeof(dist_text), "A base: %.1f cm", 
-                        g_measurement.distance_to_base);
+                // Durante medição da base, mostrar LiDAR em tempo real
+                if (lidar_available && current_lidar.valid) {
+                    snprintf(dist_text, sizeof(dist_text), "Medindo a Base: %d cm (Pressione para capturar)", 
+                            current_lidar.distance);
+                } else {
+                    snprintf(dist_text, sizeof(dist_text), "Medindo a Base: -- cm (Sem sinal)");
+                }
+                break;
+            case PLANT_MEASUREMENT_STATE_COMPLETE:
+                snprintf(dist_text, sizeof(dist_text), "Medicao Completa: %.1f cm total", 
+                        g_measurement.total_height);
                 break;
             default:
                 if (lidar_available && current_lidar.valid) {
@@ -339,41 +442,19 @@ static void update_ui_state(void)
         }
     }
     
-    if (g_measure_btn) {
-        lv_obj_t *label = lv_obj_get_child(g_measure_btn, 0);
-        if (label) {
-            switch (g_state) {
-                case PLANT_MEASUREMENT_STATE_IDLE:
-                    lv_label_set_text(label, "INICIAR");
-                    break;
-                case PLANT_MEASUREMENT_STATE_COMPLETE:
-                    lv_label_set_text(label, "NOVO");
-                    break;
-                default:
-                    lv_label_set_text(label, "MEDIR");
-                    break;
-            }
-        }
-    }
+    // O botão físico substituiu o botão touch - não precisamos mais atualizar UI do botão
+    // A lógica agora é controlada pelo botão físico no GPIO 5
 }
 
-static void calculate_height(void)
-{
-    g_state = PLANT_MEASUREMENT_STATE_CALCULATING;
-    update_ui_state();
-    lv_timer_create(calculation_timer_cb, 1500, NULL);
-}
+
 
 static float read_lidar_distance(void)
 {
     lidar_data_t lidar_data;
-    lidar_error_t result;
     
-    // Tentar leitura bloqueante (aguarda até 1 segundo)
-    result = lidar_read_blocking(&lidar_data);
-    
-    if (result == LIDAR_OK && lidar_data.valid) {
-        ESP_LOGI(TAG, "LiDAR reading: %d cm, strength: %d", 
+    // Usar a mesma função que funciona no display dinâmico
+    if (lidar_get_last_reading(&lidar_data) && lidar_data.valid) {
+        ESP_LOGI(TAG, "Captured LiDAR reading: %d cm, strength: %d", 
                  lidar_data.distance, lidar_data.strength);
         
         // Verificar se a leitura está dentro dos limites esperados
@@ -381,14 +462,12 @@ static float read_lidar_distance(void)
             return (float)lidar_data.distance;
         } else {
             ESP_LOGW(TAG, "LiDAR distance out of range: %d cm", lidar_data.distance);
+            return 0.0f; // Retorna 0 para indicar erro
         }
     } else {
-        ESP_LOGW(TAG, "LiDAR read error: %s", lidar_error_to_string(result));
+        ESP_LOGW(TAG, "No valid LiDAR data available");
+        return 0.0f; // Retorna 0 para indicar erro
     }
-    
-    // Fallback: retornar valor simulado se LiDAR falhar
-    ESP_LOGW(TAG, "Using fallback distance value");
-    return 150.0f + (esp_random() % 100);  // 150-250 cm
 }
 
 static void update_result_display(void)
@@ -430,6 +509,8 @@ static void feedback_timer_cb(lv_timer_t *timer)
     lv_timer_del(timer);
 }
 
+// FUNÇÃO DESABILITADA - USANDO BOTÃO FÍSICO PARA CONTROLAR CÁLCULOS
+/*
 static void calculation_timer_cb(lv_timer_t *timer)
 {
     float dist_top_sq = g_measurement.distance_to_top * g_measurement.distance_to_top;
@@ -460,10 +541,16 @@ static void calculation_timer_cb(lv_timer_t *timer)
     
     lv_timer_del(timer);
 }
+*/
 
 static void lidar_update_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
+    
+    // Verificar se o botão foi pressionado
+    if (check_button_press()) {
+        process_button_press();
+    }
     
     // Atualizar apenas se estivermos em estado idle ou aguardando medição
     if (g_state == PLANT_MEASUREMENT_STATE_IDLE || 
@@ -471,17 +558,41 @@ static void lidar_update_timer_cb(lv_timer_t *timer)
         g_state == PLANT_MEASUREMENT_STATE_TOP ||
         g_state == PLANT_MEASUREMENT_STATE_BASE) {
         
-        // Atualizar o display de distância sem bloquear a UI
+        // Atualizar o display de distância dinâmico durante medições
         if (g_distance_label) {
             char dist_text[128];
             lidar_data_t current_lidar;
             
             if (lidar_get_last_reading(&current_lidar) && current_lidar.valid) {
-                if (g_state == PLANT_MEASUREMENT_STATE_IDLE) {
-                    snprintf(dist_text, sizeof(dist_text), "LiDAR: %d cm (Forca: %d)", 
-                            current_lidar.distance, current_lidar.strength);
-                    lv_label_set_text(g_distance_label, dist_text);
+                switch (g_state) {
+                    case PLANT_MEASUREMENT_STATE_IDLE:
+                        snprintf(dist_text, sizeof(dist_text), "LiDAR: %d cm (Força: %d)", 
+                                current_lidar.distance, current_lidar.strength);
+                        break;
+                        
+                    case PLANT_MEASUREMENT_STATE_HORIZONTAL:
+                        snprintf(dist_text, sizeof(dist_text), "Medindo HORIZONTAL: %d cm (Clique para capturar)", 
+                                current_lidar.distance);
+                        break;
+                        
+                    case PLANT_MEASUREMENT_STATE_TOP:
+                        snprintf(dist_text, sizeof(dist_text), "Medindo TOPO: %d cm (Clique para capturar)", 
+                                current_lidar.distance);
+                        break;
+                        
+                    case PLANT_MEASUREMENT_STATE_BASE:
+                        snprintf(dist_text, sizeof(dist_text), "Medindo BASE: %d cm (Clique para capturar)", 
+                                current_lidar.distance);
+                        break;
+                        
+                    default:
+                        snprintf(dist_text, sizeof(dist_text), "LiDAR: %d cm", current_lidar.distance);
+                        break;
                 }
+                lv_label_set_text(g_distance_label, dist_text);
+            } else {
+                // Sem sinal do LiDAR
+                lv_label_set_text(g_distance_label, "LiDAR: Sem sinal");
             }
         }
     }
@@ -510,7 +621,6 @@ void measurement_main_destroy(lv_obj_t *screen)
     g_instruction_label = NULL;
     g_distance_label = NULL;
     g_result_panel = NULL;
-    g_measure_btn = NULL;
     g_save_btn = NULL;
     
     g_state = PLANT_MEASUREMENT_STATE_IDLE;
@@ -555,4 +665,244 @@ bool measurement_load_history(void)
 {
     ESP_LOGI(TAG, "Loading measurement history");
     return true;
+}
+
+// === FUNÇÕES DOS WIDGETS DINÂMICOS ===
+
+static void create_horizontal_widget(void)
+{
+    if (!g_widgets_container) return;
+    
+    g_widget_horizontal = lv_obj_create(g_widgets_container);
+    lv_obj_set_size(g_widget_horizontal, 440, 30);
+    lv_obj_set_style_bg_color(g_widget_horizontal, lv_color_hex(UI_COLOR_PRIMARY_VARIANT), LV_PART_MAIN);
+    lv_obj_set_style_radius(g_widget_horizontal, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(g_widget_horizontal, 8, LV_PART_MAIN);
+    
+    lv_obj_t *label = lv_label_create(g_widget_horizontal);
+    char text[100];
+    snprintf(text, sizeof(text), "Distancia Horizontal: %.1f cm", g_measurement.distance_horizontal);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(label, UI_FONT_SMALL, LV_PART_MAIN);
+    lv_obj_center(label);
+    
+    ESP_LOGI(TAG, "Created horizontal distance widget");
+}
+
+static void create_top_widget(void)
+{
+    if (!g_widgets_container) return;
+    
+    g_widget_top = lv_obj_create(g_widgets_container);
+    lv_obj_set_size(g_widget_top, 440, 30);
+    lv_obj_set_style_bg_color(g_widget_top, lv_color_hex(UI_COLOR_SUCCESS), LV_PART_MAIN);
+    lv_obj_set_style_radius(g_widget_top, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(g_widget_top, 8, LV_PART_MAIN);
+    
+    lv_obj_t *label = lv_label_create(g_widget_top);
+    char text[100];
+    snprintf(text, sizeof(text), "Distancia ao Topo: %.1f cm", g_measurement.distance_to_top);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(label, UI_FONT_SMALL, LV_PART_MAIN);
+    lv_obj_center(label);
+    
+    ESP_LOGI(TAG, "Created top distance widget");
+}
+
+static void create_base_widget(void)
+{
+    if (!g_widgets_container) return;
+    
+    g_widget_base = lv_obj_create(g_widgets_container);
+    lv_obj_set_size(g_widget_base, 440, 30);
+    lv_obj_set_style_bg_color(g_widget_base, lv_color_hex(UI_COLOR_INFO), LV_PART_MAIN);
+    lv_obj_set_style_radius(g_widget_base, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(g_widget_base, 8, LV_PART_MAIN);
+    
+    lv_obj_t *label = lv_label_create(g_widget_base);
+    char text[100];
+    snprintf(text, sizeof(text), "Distancia a Base: %.1f cm", g_measurement.distance_to_base);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(label, UI_FONT_SMALL, LV_PART_MAIN);
+    lv_obj_center(label);
+    
+    ESP_LOGI(TAG, "Created base distance widget");
+}
+
+static void calculate_height1(void)
+{
+    // Calcular altura 1 (do horizontal ao topo)
+    float dist_top_sq = g_measurement.distance_to_top * g_measurement.distance_to_top;
+    float dist_hor_sq = g_measurement.distance_horizontal * g_measurement.distance_horizontal;
+    
+    if (dist_top_sq > dist_hor_sq) {
+        g_measurement.height_top = sqrt(dist_top_sq - dist_hor_sq);
+    } else {
+        g_measurement.height_top = 0.0f;
+    }
+    
+    // Criar widget para altura 1
+    if (!g_widgets_container) return;
+    
+    g_widget_height1 = lv_obj_create(g_widgets_container);
+    lv_obj_set_size(g_widget_height1, 440, 30);
+    lv_obj_set_style_bg_color(g_widget_height1, lv_color_hex(UI_COLOR_WARNING), LV_PART_MAIN);
+    lv_obj_set_style_radius(g_widget_height1, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(g_widget_height1, 8, LV_PART_MAIN);
+    
+    lv_obj_t *label = lv_label_create(g_widget_height1);
+    char text[100];
+    snprintf(text, sizeof(text), "Altura 1 (topo): %.1f cm", g_measurement.height_top);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(label, UI_FONT_SMALL, LV_PART_MAIN);
+    lv_obj_center(label);
+    
+    ESP_LOGI(TAG, "Calculated and created height1 widget: %.1f cm", g_measurement.height_top);
+}
+
+static void calculate_height2(void)
+{
+    // Calcular altura 2 (do horizontal à base)
+    float dist_base_sq = g_measurement.distance_to_base * g_measurement.distance_to_base;
+    float dist_hor_sq = g_measurement.distance_horizontal * g_measurement.distance_horizontal;
+    
+    if (dist_base_sq > dist_hor_sq) {
+        g_measurement.height_base = sqrt(dist_base_sq - dist_hor_sq);
+    } else {
+        g_measurement.height_base = 0.0f;
+    }
+    
+    // Criar widget para altura 2
+    if (!g_widgets_container) return;
+    
+    g_widget_height2 = lv_obj_create(g_widgets_container);
+    lv_obj_set_size(g_widget_height2, 440, 30);
+    lv_obj_set_style_bg_color(g_widget_height2, lv_color_hex(UI_COLOR_SECONDARY), LV_PART_MAIN);
+    lv_obj_set_style_radius(g_widget_height2, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(g_widget_height2, 8, LV_PART_MAIN);
+    
+    lv_obj_t *label = lv_label_create(g_widget_height2);
+    char text[100];
+    snprintf(text, sizeof(text), "Altura 2 (base): %.1f cm", g_measurement.height_base);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(label, UI_FONT_SMALL, LV_PART_MAIN);
+    lv_obj_center(label);
+    
+    ESP_LOGI(TAG, "Calculated and created height2 widget: %.1f cm", g_measurement.height_base);
+}
+
+static void calculate_total_height(void)
+{
+    // Calcular altura total
+    g_measurement.total_height = g_measurement.height_top + g_measurement.height_base;
+    g_measurement.measurement_valid = true;
+    
+    // Criar widget para altura total (destacado)
+    if (!g_widgets_container) return;
+    
+    g_widget_total = lv_obj_create(g_widgets_container);
+    lv_obj_set_size(g_widget_total, 440, 40);
+    lv_obj_set_style_bg_color(g_widget_total, lv_color_hex(UI_COLOR_ERROR), LV_PART_MAIN);
+    lv_obj_set_style_radius(g_widget_total, 12, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(g_widget_total, 10, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(g_widget_total, 8, LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(g_widget_total, LV_OPA_30, LV_PART_MAIN);
+    
+    lv_obj_t *label = lv_label_create(g_widget_total);
+    char text[100];
+    snprintf(text, sizeof(text), "ALTURA TOTAL: %.1f cm", g_measurement.total_height);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(label, UI_FONT_MEDIUM, LV_PART_MAIN);
+    lv_obj_center(label);
+    
+    ESP_LOGI(TAG, "Calculated total height: %.1f cm", g_measurement.total_height);
+}
+
+static void show_action_buttons(void)
+{
+    // Mostrar botões de salvar e cancelar
+    if (g_save_btn) {
+        lv_obj_clear_flag(g_save_btn, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (g_cancel_btn) {
+        lv_obj_clear_flag(g_cancel_btn, LV_OBJ_FLAG_HIDDEN);
+    }
+    ESP_LOGI(TAG, "Showing action buttons");
+}
+
+static void clear_all_widgets(void)
+{
+    // Limpar todos os widgets dinâmicos
+    if (g_widgets_container) {
+        lv_obj_clean(g_widgets_container);
+    }
+    
+    g_widget_horizontal = NULL;
+    g_widget_top = NULL;
+    g_widget_base = NULL;
+    g_widget_height1 = NULL;
+    g_widget_height2 = NULL;
+    g_widget_total = NULL;
+    
+    // Ocultar botões de ação
+    if (g_save_btn) {
+        lv_obj_add_flag(g_save_btn, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (g_cancel_btn) {
+        lv_obj_add_flag(g_cancel_btn, LV_OBJ_FLAG_HIDDEN);
+    }
+    
+    ESP_LOGI(TAG, "Cleared all measurement widgets");
+}
+
+static bool check_button_press(void)
+{
+    static bool last_button_state = true; // Pull-up = nível alto quando solto
+    int button_level = gpio_get_level(MEASUREMENT_BUTTON_PIN);
+    uint32_t current_time = esp_timer_get_time() / 1000; // ms
+    
+    // Detecta borda de descida (pressionado) com debounce melhorado
+    if (button_level == 0 && last_button_state == true && 
+        (current_time - g_last_button_time > 250)) { // Debounce de 250ms
+        
+        g_last_button_time = current_time;
+        last_button_state = false;
+        
+        ESP_LOGI(TAG, "Botão físico pressionado! Estado: %d", g_state);
+        return true;
+    }
+    
+    // Atualiza estado do botão
+    if (button_level == 1) {
+        last_button_state = true;
+    }
+    
+    return false;
+}
+
+static void show_error_feedback(const char *message)
+{
+    if (!g_widgets_container || !message) return;
+    
+    // Criar feedback temporário de erro
+    lv_obj_t *error_label = lv_label_create(g_widgets_container);
+    lv_label_set_text(error_label, message);
+    lv_obj_set_style_text_color(error_label, lv_color_hex(UI_COLOR_ERROR), LV_PART_MAIN);
+    lv_obj_set_style_text_font(error_label, UI_FONT_MEDIUM, LV_PART_MAIN);
+    lv_obj_align(error_label, LV_ALIGN_CENTER, 0, 0);
+    
+    // Remover após 2 segundos usando timer simples
+    static lv_obj_t *temp_error_label = NULL;
+    if (temp_error_label) {
+        lv_obj_del(temp_error_label);
+    }
+    temp_error_label = error_label;
+    
+    ESP_LOGI(TAG, "Error feedback: %s", message);
 }

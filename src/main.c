@@ -10,6 +10,10 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <lvgl.h>
+#include <string.h>
+#include <nvs_flash.h>
+#include <time.h>
+#include <driver/uart.h>
 #include "config.h"
 #include "display.h"
 #include "esp_bsp.h"
@@ -18,6 +22,7 @@
 // Inclusao dos modulos do projeto
 #include "interface/ui_os.h"
 #include "sensors/sensors.h"
+#include "sensors/lidar_tf_mini.h"
 
 // Variaveis globais
 static sensor_data_t sensor_data = {0};
@@ -30,6 +35,20 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "=== ESP32-S3 Operating System ===");
     ESP_LOGI(TAG, "Inicializando sistema embarcado...");
+    
+    // Inicializar NVS Flash para persistência de dados
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+    ESP_LOGI(TAG, "NVS Flash inicializado!");
+    
+    // Configurar timezone para UTC para evitar problemas de conversão
+    setenv("TZ", "UTC", 1);
+    tzset();
+    ESP_LOGI(TAG, "Timezone configurado para UTC");
     
     // Inicializa display (usando codigo ESP-IDF existente) - MODO HORIZONTAL
     bsp_display_cfg_t cfg = {
@@ -56,6 +75,23 @@ void app_main(void)
         ui_show_notification("Erro nos sensores", "error");
     }
     
+    // Inicializa LiDAR
+    lidar_config_t lidar_config = {
+        .uart_num = LIDAR_UART_NUM,
+        .tx_pin = LIDAR_TX_PIN,
+        .rx_pin = LIDAR_RX_PIN,
+        .baud_rate = LIDAR_BAUD_RATE,
+        .timeout_ms = 1000
+    };
+    
+    if (lidar_init(&lidar_config) == ESP_OK) {
+        ESP_LOGI(TAG, "LiDAR TF Mini Plus inicializado com sucesso!");
+        ui_show_notification("LiDAR conectado", "success");
+    } else {
+        ESP_LOGE(TAG, "Falha na inicializacao do LiDAR");
+        ui_show_notification("Erro no LiDAR", "error");
+    }
+    
     ESP_LOGI(TAG, "Sistema pronto! Iniciando loop principal...");
     
     // Variaveis do sistema
@@ -74,9 +110,9 @@ void app_main(void)
             
             // Atualiza estado do sistema
             system_state.wifi_connected = false; // Implementar WiFi futuramente
-            system_state.bluetooth_enabled = false; // Implementar BT futuramente
+            system_state.bluetooth_connected = false; // Implementar BT futuramente
             system_state.battery_level = 95; // Simular bateria por enquanto
-            system_state.low_battery = false;
+            strcpy(system_state.current_time, "11 Oct 2025 17:20");
             
             ui_update_system_state(&system_state);
         }
