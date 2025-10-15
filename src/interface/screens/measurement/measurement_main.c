@@ -21,6 +21,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
+#include "../../../storage/sd_storage.h"
 
 static const char *TAG = "MEASUREMENT";
 
@@ -45,7 +46,6 @@ static lv_obj_t *g_widget_total = NULL;
 static lv_obj_t *g_widgets_container = NULL;
 
 // Controle do botão físico
-static bool g_button_pressed = false;
 static uint32_t g_last_button_time = 0;
 
 // Declarações de funções privadas
@@ -67,6 +67,7 @@ static void show_action_buttons(void);
 static void clear_all_widgets(void);
 static bool check_button_press(void);
 static void show_error_feedback(const char *message);
+static void save_and_restart(void);
 
 // Textos das instruções para cada estado
 static const char* get_instruction_text(plant_measurement_state_t state) {
@@ -200,7 +201,8 @@ lv_obj_t *measurement_main_create(lv_obj_t *parent)
 
     g_save_btn = lv_btn_create(screen);
     lv_obj_set_size(g_save_btn, 120, 45);
-    lv_obj_set_pos(g_save_btn, 100, 360);
+    // Posicionar ancorado ao rodapé para garantir visibilidade em qualquer rotação
+    lv_obj_align(g_save_btn, LV_ALIGN_BOTTOM_LEFT, 30, -12);
     lv_obj_set_style_bg_color(g_save_btn, lv_color_hex(UI_COLOR_SUCCESS), LV_PART_MAIN);
     lv_obj_add_event_cb(g_save_btn, save_button_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_flag(g_save_btn, LV_OBJ_FLAG_HIDDEN); // Oculto inicialmente
@@ -213,7 +215,8 @@ lv_obj_t *measurement_main_create(lv_obj_t *parent)
 
     g_cancel_btn = lv_btn_create(screen);
     lv_obj_set_size(g_cancel_btn, 120, 45);
-    lv_obj_set_pos(g_cancel_btn, 250, 360);
+    // Posicionar ancorado ao rodapé para garantir visibilidade em qualquer rotação
+    lv_obj_align(g_cancel_btn, LV_ALIGN_BOTTOM_RIGHT, -30, -12);
     lv_obj_set_style_bg_color(g_cancel_btn, lv_color_hex(UI_COLOR_ERROR), LV_PART_MAIN);
     lv_obj_add_event_cb(g_cancel_btn, cancel_button_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_flag(g_cancel_btn, LV_OBJ_FLAG_HIDDEN); // Oculto inicialmente
@@ -307,11 +310,9 @@ static void process_button_press(void)
             break;
             
         case PLANT_MEASUREMENT_STATE_COMPLETE:
-            // Permitir reiniciar nova medição após finalizar
-            ESP_LOGI(TAG, "Restarting new measurement...");
-            clear_all_widgets();
-            memset(&g_measurement, 0, sizeof(plant_measurement_t));
-            g_state = PLANT_MEASUREMENT_STATE_HORIZONTAL;
+            // Requisito: botão físico no estado COMPLETO deve SALVAR e iniciar nova medição
+            ESP_LOGI(TAG, "Complete -> salvar e iniciar nova medicao (botao fisico)");
+            save_and_restart();
             break;
             
         default:
@@ -326,28 +327,8 @@ static void save_button_cb(lv_event_t *e)
     (void)e;
     
     if (g_state == PLANT_MEASUREMENT_STATE_COMPLETE && g_measurement.measurement_valid) {
-        time_t now;
-        time(&now);
-        struct tm *timeinfo = localtime(&now);
-        strftime(g_measurement.timestamp, sizeof(g_measurement.timestamp), 
-                "%d/%m/%Y %H:%M", timeinfo);
-        
-        ESP_LOGI(TAG, "Measurement saved: %.1f cm at %s", 
-                g_measurement.total_height, g_measurement.timestamp);
-        
-        lv_obj_t *parent = lv_obj_get_parent(g_save_btn);
-        lv_obj_t *feedback = lv_label_create(parent);
-        lv_label_set_text(feedback, "Salvo com sucesso!");
-        lv_obj_set_style_text_color(feedback, lv_color_hex(UI_COLOR_SUCCESS), LV_PART_MAIN);
-        lv_obj_align(feedback, LV_ALIGN_BOTTOM_MID, 0, -10);
-        
-        // Resetar para nova medição após salvar
-        clear_all_widgets();
-        memset(&g_measurement, 0, sizeof(plant_measurement_t));
-        g_state = PLANT_MEASUREMENT_STATE_IDLE;
-        update_ui_state();
-        
-        lv_timer_create(feedback_timer_cb, 2000, feedback);
+        // Requisito: no botão virtual "Salvar" também deve salvar e iniciar nova medição
+        save_and_restart();
     }
 }
 
@@ -360,7 +341,8 @@ static void cancel_button_cb(lv_event_t *e)
     // Limpar todos os widgets dinâmicos
     clear_all_widgets();
     
-    g_state = PLANT_MEASUREMENT_STATE_IDLE;
+    // Requisito: "Cancelar" inicia uma nova medição sem salvar
+    g_state = PLANT_MEASUREMENT_STATE_HORIZONTAL;
     memset(&g_measurement, 0, sizeof(plant_measurement_t));
     update_ui_state();
 }
@@ -437,8 +419,17 @@ static void update_ui_state(void)
     if (g_save_btn) {
         if (g_state == PLANT_MEASUREMENT_STATE_COMPLETE && g_measurement.measurement_valid) {
             lv_obj_clear_flag(g_save_btn, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(g_save_btn);
         } else {
             lv_obj_add_flag(g_save_btn, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    if (g_cancel_btn) {
+        if (g_state == PLANT_MEASUREMENT_STATE_COMPLETE && g_measurement.measurement_valid) {
+            lv_obj_clear_flag(g_cancel_btn, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(g_cancel_btn);
+        } else {
+            lv_obj_add_flag(g_cancel_btn, LV_OBJ_FLAG_HIDDEN);
         }
     }
     
@@ -508,40 +499,6 @@ static void feedback_timer_cb(lv_timer_t *timer)
     }
     lv_timer_del(timer);
 }
-
-// FUNÇÃO DESABILITADA - USANDO BOTÃO FÍSICO PARA CONTROLAR CÁLCULOS
-/*
-static void calculation_timer_cb(lv_timer_t *timer)
-{
-    float dist_top_sq = g_measurement.distance_to_top * g_measurement.distance_to_top;
-    float dist_hor_sq = g_measurement.distance_horizontal * g_measurement.distance_horizontal;
-    
-    if (dist_top_sq > dist_hor_sq) {
-        g_measurement.height_top = sqrt(dist_top_sq - dist_hor_sq);
-    } else {
-        g_measurement.height_top = 0.0f;
-    }
-    
-    float dist_base_sq = g_measurement.distance_to_base * g_measurement.distance_to_base;
-    
-    if (dist_base_sq > dist_hor_sq) {
-        g_measurement.height_base = sqrt(dist_base_sq - dist_hor_sq);
-    } else {
-        g_measurement.height_base = 0.0f;
-    }
-    
-    g_measurement.total_height = g_measurement.height_top + g_measurement.height_base;
-    g_measurement.measurement_valid = true;
-    
-    ESP_LOGI(TAG, "Calculation complete: h1=%.1f, h2=%.1f, total=%.1f cm", 
-            g_measurement.height_top, g_measurement.height_base, g_measurement.total_height);
-    
-    g_state = PLANT_MEASUREMENT_STATE_COMPLETE;
-    update_ui_state();
-    
-    lv_timer_del(timer);
-}
-*/
 
 static void lidar_update_timer_cb(lv_timer_t *timer)
 {
@@ -829,9 +786,11 @@ static void show_action_buttons(void)
     // Mostrar botões de salvar e cancelar
     if (g_save_btn) {
         lv_obj_clear_flag(g_save_btn, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(g_save_btn);
     }
     if (g_cancel_btn) {
         lv_obj_clear_flag(g_cancel_btn, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(g_cancel_btn);
     }
     ESP_LOGI(TAG, "Showing action buttons");
 }
@@ -905,4 +864,69 @@ static void show_error_feedback(const char *message)
     temp_error_label = error_label;
     
     ESP_LOGI(TAG, "Error feedback: %s", message);
+}
+
+// === SALVAR E REINICIAR ===
+static void save_and_restart(void)
+{
+    // Monta timestamp legível
+    time_t now;
+    time(&now);
+    struct tm *timeinfo = localtime(&now);
+    strftime(g_measurement.timestamp, sizeof(g_measurement.timestamp), "%d/%m/%Y %H:%M", timeinfo);
+
+    // Monta linha CSV
+    char line[256];
+    snprintf(line, sizeof(line), "%s,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f",
+             g_measurement.timestamp,
+             g_measurement.distance_horizontal,
+             g_measurement.distance_to_top,
+             g_measurement.distance_to_base,
+             g_measurement.height_top,
+             g_measurement.height_base,
+             g_measurement.total_height);
+
+    const char *csv_path = SD_MOUNT_POINT "/medicoes.csv";
+    const char *csv_header = "timestamp,horizontal_cm,top_cm,base_cm,height_top_cm,height_base_cm,total_cm";
+
+    // Onde mostrar feedback
+    lv_obj_t *parent = g_save_btn ? lv_obj_get_parent(g_save_btn) : NULL;
+    if (!parent && g_widgets_container) parent = g_widgets_container;
+    if (!parent && g_distance_label) parent = lv_obj_get_parent(g_distance_label);
+    lv_obj_t *feedback = parent ? lv_label_create(parent) : NULL;
+
+    if (sd_storage_is_mounted()) {
+        esp_err_t err = sd_storage_append_csv(csv_path, csv_header, line);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "Measurement saved to %s: %s", csv_path, line);
+            if (feedback) {
+                lv_label_set_text(feedback, "Salvo com sucesso!");
+                lv_obj_set_style_text_color(feedback, lv_color_hex(UI_COLOR_SUCCESS), LV_PART_MAIN);
+                lv_obj_align(feedback, LV_ALIGN_BOTTOM_MID, 0, -10);
+                lv_timer_create(feedback_timer_cb, 2000, feedback);
+            }
+        } else {
+            ESP_LOGE(TAG, "Falha ao salvar no SD (%s)", esp_err_to_name(err));
+            if (feedback) {
+                lv_label_set_text(feedback, "Falha ao salvar no SD");
+                lv_obj_set_style_text_color(feedback, lv_color_hex(UI_COLOR_ERROR), LV_PART_MAIN);
+                lv_obj_align(feedback, LV_ALIGN_BOTTOM_MID, 0, -10);
+                lv_timer_create(feedback_timer_cb, 2000, feedback);
+            }
+        }
+    } else {
+        ESP_LOGW(TAG, "Cartão SD não montado, não foi possível salvar");
+        if (feedback) {
+            lv_label_set_text(feedback, "Cartão não detectado");
+            lv_obj_set_style_text_color(feedback, lv_color_hex(UI_COLOR_ERROR), LV_PART_MAIN);
+            lv_obj_align(feedback, LV_ALIGN_BOTTOM_MID, 0, -10);
+            lv_timer_create(feedback_timer_cb, 2000, feedback);
+        }
+    }
+
+    // Reiniciar nova medição
+    clear_all_widgets();
+    memset(&g_measurement, 0, sizeof(plant_measurement_t));
+    g_state = PLANT_MEASUREMENT_STATE_HORIZONTAL;
+    update_ui_state();
 }

@@ -1,10 +1,6 @@
 /**
  * @file config.h
- * @brie// UART para LIDAR TF-Plus (usando GPIO livres conforme solicitado)
-#define LIDAR_UART_NUM             UART_NUM_1
-#define LIDAR_TX_PIN               17    // GPIO17 - TX do ESP32 -> RX do LiDAR
-#define LIDAR_RX_PIN               18    // GPIO18 - RX do ESP32 <- TX do LiDAR
-#define LIDAR_BAUD_RATE            115200igurações centralizadas do projeto JC3248W535
+ * @brief Configurações centralizadas do projeto JC3248W535
  * @author Seu Nome
  * @date 2025
  */
@@ -37,9 +33,22 @@ extern "C" {
 // UART para LIDAR TF-Plus (conforme esquematico JC3248W535EN)
 // UART1: GPIO43=TX1, GPIO44=RX1 (pinos dedicados do ESP32-S3)
 #define LIDAR_UART_NUM             UART_NUM_1
-#define LIDAR_TX_PIN               17    // GPIO17 - TX1 do ESP32 -> RX do LiDAR
-#define LIDAR_RX_PIN               18    // GPIO18 - RX1 do ESP32 <- TX do LiDAR
+#define LIDAR_TX_PIN               17    // GPIO17 - TX do ESP32 -> RX do LiDAR
+#define LIDAR_RX_PIN               18    // GPIO18 - RX do ESP32 <- TX do LiDAR
 #define LIDAR_BAUD_RATE            115200
+
+// =============================================================================
+// SD CARD (SDMMC em 1-bit por padrão, pinos conforme demos do pacote)
+// =============================================================================
+#define SD_MOUNT_POINT             "/sdcard"
+#define SD_PIN_CLK                 GPIO_NUM_12
+#define SD_PIN_CMD                 GPIO_NUM_11
+#define SD_PIN_D0                  GPIO_NUM_13
+#define SD_PIN_D1                  GPIO_NUM_14  // usado apenas se SD_BUS_WIDTH==4
+#define SD_PIN_D2                  GPIO_NUM_9   // usado apenas se SD_BUS_WIDTH==4
+#define SD_PIN_D3                  GPIO_NUM_10  // usado apenas se SD_BUS_WIDTH==4
+#define SD_BUS_WIDTH               1            // 1 ou 4
+#define SD_MAX_FREQ_KHZ            20000        // ~20 MHz
 
 // ADC para bateria (conforme esquematico - usando GPIO livre)
 #define BATTERY_ADC_CHANNEL        ADC1_CHANNEL_6  // GPIO7 - livre conforme esquematico

@@ -23,6 +23,7 @@
 #include "interface/ui_os.h"
 #include "sensors/sensors.h"
 #include "sensors/lidar_tf_mini.h"
+#include "storage/sd_storage.h"
 
 // Variaveis globais
 static sensor_data_t sensor_data = {0};
@@ -65,6 +66,15 @@ void app_main(void)
     // Inicializa sistema operacional
     ui_os_init();
     ESP_LOGI(TAG, "Sistema Operacional inicializado!");
+
+    // Monta cartão SD no boot
+    if (sd_storage_init()) {
+        ESP_LOGI(TAG, "Cartão SD montado em %s", SD_MOUNT_POINT);
+        ui_show_notification("Cartão SD montado", "success");
+    } else {
+        ESP_LOGW(TAG, "Falha ao montar cartão SD");
+        ui_show_notification("Cartão não detectado", "warning");
+    }
     
     // Inicializa sensores
     if (sensors_init()) {
