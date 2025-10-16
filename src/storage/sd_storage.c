@@ -66,17 +66,7 @@ bool sd_storage_init(void)
     return false;
 }
 
-static bool file_exists_and_empty(const char *path, bool *is_empty)
-{
-    struct stat st;
-    if (stat(path, &st) != 0) {
-        // não existe
-        *is_empty = true;
-        return false;
-    }
-    *is_empty = (st.st_size == 0);
-    return true;
-}
+
 
 esp_err_t sd_storage_append_csv(const char *filepath, const char *header, const char *line)
 {
@@ -95,7 +85,6 @@ esp_err_t sd_storage_append_csv(const char *filepath, const char *header, const 
     }
 
     // Se o arquivo foi recém-criado, escreva cabeçalho
-    long pos = ftell(f);
     fseek(f, 0, SEEK_END);
     long end = ftell(f);
     bool empty = (end == 0);

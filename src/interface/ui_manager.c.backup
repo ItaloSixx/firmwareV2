@@ -1,6 +1,8 @@
 /**
  * @file ui_manager.c
- * @brief Implementação do gerenciador principal da interface
+ * @brief Implementação do gerenciador principal da interfstatic void datetime_navigation_callback(const char *screen_name);
+static void save_datetime_to_nvs(int hour, int minute, int day, int month, int year);
+static void load_datetime_from_nvs(void);ce
  * @author ItaloSixx
  * @date 2025
  */
@@ -26,12 +28,7 @@ static const char *TAG = "UI_MANAGER";
 // Instância global do gerenciador
 static ui_manager_t *g_manager = NULL;
 
-// Variáveis estáticas para os pickers
-static lv_obj_t *g_hour_roller = NULL;
-static lv_obj_t *g_minute_roller = NULL;
-static lv_obj_t *g_day_roller = NULL;
-static lv_obj_t *g_month_roller = NULL;
-static lv_obj_t *g_year_roller = NULL;
+
 
 // =============================================================================
 // CALLBACKS INTERNOS
@@ -69,9 +66,10 @@ static void close_modal_callback(lv_event_t *e)
 }
 
 // Declarações das funções
-static void create_time_picker_modal(void);
-static void create_date_picker_modal(void);
 
+static void create_date_picker_modal(void);
+static void save_time_callback(lv_event_t *e);
+static void save_date_callback(lv_event_t *e);
 
 static void settings_navigation_callback(const char *screen_name)
 {
@@ -79,10 +77,54 @@ static void settings_navigation_callback(const char *screen_name)
     
     ESP_LOGI(TAG, "Settings navigation to: %s", screen_name);
     
- 
     if (strcmp(screen_name, "wifi_main") == 0) {
         ESP_LOGI(TAG, "Navigating to wifi settings");
         ui_manager_navigate_to_settings(screen_name);
+    }
+}
+
+
+
+static void save_datetime_to_nvs(int hour, int minute, int day, int month, int year)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("datetime", NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK) {
+        nvs_set_i32(nvs_handle, "hour", hour);
+        nvs_set_i32(nvs_handle, "minute", minute);
+        nvs_set_i32(nvs_handle, "day", day);
+        nvs_set_i32(nvs_handle, "month", month);
+        nvs_set_i32(nvs_handle, "year", year);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+        ESP_LOGI(TAG, "DateTime saved to NVS: %02d/%02d/%04d %02d:%02d", day, month, year, hour, minute);
+    } else {
+        ESP_LOGE(TAG, "Error opening NVS handle for datetime: %s", esp_err_to_name(err));
+    }
+}
+
+static void load_datetime_from_nvs(void)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("datetime", NVS_READONLY, &nvs_handle);
+    if (err == ESP_OK) {
+        int32_t hour = 12, minute = 0, day = 1, month = 1, year = 2024;
+        
+        nvs_get_i32(nvs_handle, "hour", &hour);
+        nvs_get_i32(nvs_handle, "minute", &minute);
+        nvs_get_i32(nvs_handle, "day", &day);
+        nvs_get_i32(nvs_handle, "month", &month);
+        nvs_get_i32(nvs_handle, "year", &year);
+        
+        nvs_close(nvs_handle);
+        
+        // Aplicar a data/hora carregada do sistema
+        datetime_set_current((int)hour, (int)minute, (int)day, (int)month, (int)year);
+        ESP_LOGI(TAG, "DateTime loaded from NVS: %02d/%02d/%04d %02d:%02d", (int)day, (int)month, (int)year, (int)hour, (int)minute);
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGI(TAG, "No saved datetime found in NVS, using defaults");
+    } else {
+        ESP_LOGE(TAG, "Error opening NVS handle for datetime: %s", esp_err_to_name(err));
     }
 }
 
@@ -155,7 +197,7 @@ static void create_time_picker_modal(void)
     lv_obj_center(btn_cancel_label);
 
     // Eventos para fechar o modal
-    lv_obj_add_event_cb(btn_ok, close_modal_callback, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(btn_ok, save_time_callback, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(btn_cancel, close_modal_callback, LV_EVENT_CLICKED, NULL);
 }
 
@@ -232,7 +274,7 @@ static void create_date_picker_modal(void)
     lv_obj_center(btn_cancel_label);
 
     // Eventos para fechar o modal
-    lv_obj_add_event_cb(btn_ok, close_modal_callback, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(btn_ok, save_date_callback, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(btn_cancel, close_modal_callback, LV_EVENT_CLICKED, NULL);
 }
 
@@ -346,6 +388,9 @@ ui_manager_t *ui_manager_init(void)
     setenv("TZ", "UTC0", 1);
     tzset();
     
+    // Carregar data/hora salva do NVS
+    load_datetime_from_nvs();
+    
     // Inicializar com tela home
     manager->active_screen = UI_SCREEN_HOME;
     create_screen(manager, UI_SCREEN_HOME);
@@ -364,6 +409,16 @@ ui_manager_t *ui_manager_init(void)
 void ui_manager_update(ui_manager_t *manager)
 {
     if (!manager) return;
+    
+    // Atualizar data e horário na barra de status com hora do sistema
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    
+    char datetime_str[32];
+    strftime(datetime_str, sizeof(datetime_str), "%d %b %Y %H:%M", &timeinfo);
+    ui_update_status_time(manager->status_bar, datetime_str);
     
     // Atualizar tela ativa se necessário
     switch (manager->active_screen) {
@@ -498,7 +553,7 @@ void ui_manager_navigate_to_settings(const char *screen_name)
         return;
     }
     
-    ESP_LOGI(TAG, "Navigating to settings screen: %s", screen_name);
+    ESP_LOGI(TAG, "Navigating to datetime settings");
     
     // Esconder a tela de settings atual
     if (g_manager->screens[UI_SCREEN_SETTINGS]) {
@@ -512,7 +567,18 @@ void ui_manager_navigate_to_settings(const char *screen_name)
     }
     
     // Criar a nova sub-tela baseada no nome
-    if (strcmp(screen_name, "wifi_main") == 0) {
+    if (strcmp(screen_name, "datetime_main") == 0) {
+        g_manager->current_subscreen = datetime_main_create(g_manager->content_area);
+        if (g_manager->current_subscreen) {
+            ESP_LOGI(TAG, "Date/Time screen created successfully");
+            // Configurar callback para voltar à tela de settings
+            datetime_main_set_back_callback(ui_manager_back_to_settings);
+            // Configurar callback para navegação dentro da tela datetime
+            datetime_main_set_navigation_callback(datetime_navigation_callback);
+        } else {
+            ESP_LOGE(TAG, "Failed to create Date/Time screen");
+        }
+    } else if (strcmp(screen_name, "wifi_main") == 0) {
         g_manager->current_subscreen = wifi_main_create(g_manager->content_area);
         if (g_manager->current_subscreen) {
             ESP_LOGI(TAG, "WiFi screen created successfully");

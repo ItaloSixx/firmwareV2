@@ -1,3 +1,5 @@
+#include "lvgl.h"
+static void wifi_settings_cb(lv_event_t *e);
 /**
  * @file settings_main.c
  * @brief Implementação da tela principal de configurações
@@ -35,9 +37,7 @@ static settings_navigation_cb_t g_navigation_callback = NULL;
 // Callbacks dos controles
 static void brightness_slider_cb(lv_event_t *e);
 static void night_mode_switch_cb(lv_event_t *e);
-static void wifi_switch_cb(lv_event_t *e);
 static void bluetooth_switch_cb(lv_event_t *e);
-static void datetime_settings_cb(lv_event_t *e);
 
 lv_obj_t *settings_main_create(lv_obj_t *parent)
 {
@@ -79,40 +79,7 @@ lv_obj_t *settings_main_create(lv_obj_t *parent)
     lv_obj_add_event_cb(brightness_slider, brightness_slider_cb, LV_EVENT_VALUE_CHANGED, brightness_label);
     y_pos += 70;
     
-    // === DATE & TIME ===
-    lv_obj_t *datetime_container = lv_obj_create(scroll_container);
-    lv_obj_set_size(datetime_container, UI_SCREEN_WIDTH - (UI_MARGIN_MEDIUM * 2), 60);
-    lv_obj_set_pos(datetime_container, 0, y_pos);
-    lv_obj_set_style_bg_opa(datetime_container, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(datetime_container, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(datetime_container, 10, LV_PART_MAIN);
-    lv_obj_add_flag(datetime_container, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(datetime_container, datetime_settings_cb, LV_EVENT_CLICKED, NULL);
-    
-    // Adicionar efeito de clique
-    lv_obj_set_style_bg_opa(datetime_container, LV_OPA_20, LV_STATE_PRESSED);
-    lv_obj_set_style_bg_color(datetime_container, lv_color_hex(UI_COLOR_PRIMARY), LV_STATE_PRESSED);
-    lv_obj_set_style_radius(datetime_container, 8, LV_PART_MAIN);
-    
-    lv_obj_t *datetime_title = lv_label_create(datetime_container);
-    lv_label_set_text(datetime_title, "Date & Time");
-    lv_obj_set_style_text_color(datetime_title, lv_color_hex(UI_COLOR_ON_SURFACE), LV_PART_MAIN);
-    lv_obj_set_style_text_font(datetime_title, UI_FONT_MEDIUM, LV_PART_MAIN);
-    lv_obj_align(datetime_title, LV_ALIGN_TOP_LEFT, 0, 0);
-    
-    lv_obj_t *datetime_desc = lv_label_create(datetime_container);
-    lv_label_set_text(datetime_desc, "Set date, time and timezone");
-    lv_obj_set_style_text_color(datetime_desc, lv_color_hex(UI_COLOR_PRIMARY), LV_PART_MAIN);
-    lv_obj_set_style_text_font(datetime_desc, UI_FONT_SMALL, LV_PART_MAIN);
-    lv_obj_align(datetime_desc, LV_ALIGN_TOP_LEFT, 0, 22);
-    
-    // Ícone de seta
-    lv_obj_t *arrow_icon = lv_label_create(datetime_container);
-    lv_label_set_text(arrow_icon, ">");
-    lv_obj_set_style_text_color(arrow_icon, lv_color_hex(UI_COLOR_ON_SURFACE), LV_PART_MAIN);
-    lv_obj_set_style_text_font(arrow_icon, UI_FONT_MEDIUM, LV_PART_MAIN);
-    lv_obj_align(arrow_icon, LV_ALIGN_RIGHT_MID, -10, 0);
-    y_pos += 80;
+
     
     // === NIGHT MODE ===
     lv_obj_t *night_container = lv_obj_create(scroll_container);
@@ -143,19 +110,21 @@ lv_obj_t *settings_main_create(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(wifi_container, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(wifi_container, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(wifi_container, 10, LV_PART_MAIN);
+        lv_obj_add_flag(wifi_container, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(wifi_container, wifi_settings_cb, LV_EVENT_CLICKED, NULL);
     
     lv_obj_t *wifi_label = lv_label_create(wifi_container);
-    lv_label_set_text(wifi_label, "Wi-Fi");
+    lv_label_set_text(wifi_label, "Wi-Fi Settings");
     lv_obj_set_style_text_color(wifi_label, lv_color_hex(UI_COLOR_ON_SURFACE), LV_PART_MAIN);
     lv_obj_set_style_text_font(wifi_label, UI_FONT_MEDIUM, LV_PART_MAIN);
     lv_obj_align(wifi_label, LV_ALIGN_LEFT_MID, 0, 0);
-    
-    lv_obj_t *wifi_switch = lv_switch_create(wifi_container);
-    lv_obj_align(wifi_switch, LV_ALIGN_RIGHT_MID, -10, 0);
-    if (g_settings.wifi_enabled) {
-        lv_obj_add_state(wifi_switch, LV_STATE_CHECKED);
-    }
-    lv_obj_add_event_cb(wifi_switch, wifi_switch_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    // Ícone de seta para indicar navegação
+    lv_obj_t *wifi_arrow = lv_label_create(wifi_container);
+    lv_label_set_text(wifi_arrow, "> ");
+    lv_obj_set_style_text_color(wifi_arrow, lv_color_hex(UI_COLOR_ON_SURFACE), LV_PART_MAIN);
+    lv_obj_set_style_text_font(wifi_arrow, UI_FONT_MEDIUM, LV_PART_MAIN);
+    lv_obj_align(wifi_arrow, LV_ALIGN_RIGHT_MID, -10, 0);
     y_pos += 60;
     
     // === BLUETOOTH ===
@@ -219,20 +188,7 @@ static void night_mode_switch_cb(lv_event_t *e)
     }
 }
 
-static void wifi_switch_cb(lv_event_t *e)
-{
-    lv_obj_t *switch_obj = lv_event_get_target(e);
-    g_settings.wifi_enabled = lv_obj_has_state(switch_obj, LV_STATE_CHECKED);
-    
-    ESP_LOGI(TAG, "Wi-Fi: %s", g_settings.wifi_enabled ? "ENABLED" : "DISABLED");
-    
-    // TODO: Implementar controle real do Wi-Fi
-    if (g_settings.wifi_enabled) {
-        // Inicializar Wi-Fi
-    } else {
-        // Desativar Wi-Fi
-    }
-}
+
 
 static void bluetooth_switch_cb(lv_event_t *e)
 {
@@ -249,11 +205,13 @@ static void bluetooth_switch_cb(lv_event_t *e)
     }
 }
 
-static void datetime_settings_cb(lv_event_t *e)
+
+
+static void wifi_settings_cb(lv_event_t *e)
 {
     (void)e;
     if (g_navigation_callback) {
-        g_navigation_callback("datetime_main");
+        g_navigation_callback("wifi_main");
     }
 }
 
