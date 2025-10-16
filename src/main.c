@@ -25,6 +25,7 @@
 #include "sensors/sensors.h"
 #include "sensors/lidar_tf_mini.h"
 #include "storage/sd_storage.h"
+#include "supabase/supabase_client.h"
 
 // Variaveis globais
 static sensor_data_t sensor_data = {0};
@@ -49,6 +50,13 @@ void app_main(void)
 
     // Inicializa o serviço Wi-Fi em background
     wifi_main_service_init();
+    
+    // Inicializa cliente Supabase (após Wi-Fi estar configurado)
+    if (supabase_init() == ESP_OK) {
+        ESP_LOGI(TAG, "Cliente Supabase inicializado!");
+    } else {
+        ESP_LOGW(TAG, "Falha ao inicializar Supabase");
+    }
     
     // Configurar timezone para UTC para evitar problemas de conversão
     setenv("TZ", "UTC", 1);

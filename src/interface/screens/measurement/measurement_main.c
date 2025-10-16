@@ -23,6 +23,7 @@
 #include <freertos/task.h>
 #include <freertos/queue.h>
 #include "../../../storage/sd_storage.h"
+#include "../../../supabase/supabase_client.h"
 
 static const char *TAG = "MEASUREMENT";
 
@@ -952,11 +953,64 @@ static void save_and_restart(void)
         esp_err_t err = sd_storage_append_csv(csv_path, csv_header, line);
         if (err == ESP_OK) {
             ESP_LOGI(TAG, "Measurement saved to %s: %s", csv_path, line);
+            
+            // Feedback inicial de salvamento
             if (feedback) {
-                lv_label_set_text(feedback, "Salvo com sucesso!");
+                lv_label_set_text(feedback, "Salvo no SD!");
                 lv_obj_set_style_text_color(feedback, lv_color_hex(UI_COLOR_SUCCESS), LV_PART_MAIN);
+                lv_obj_set_style_text_font(feedback, UI_FONT_MEDIUM, LV_PART_MAIN);
                 lv_obj_align(feedback, LV_ALIGN_BOTTOM_MID, 0, -10);
-                lv_timer_create(feedback_timer_cb, 2000, feedback);
+            }
+            
+            // Enviar para Supabase
+            ESP_LOGI(TAG, "Checking Supabase readiness...");
+            if (supabase_is_ready()) {
+                ESP_LOGI(TAG, "Supabase is ready, preparing data...");
+                
+                // Atualizar feedback para mostrar envio
+                if (feedback) {
+                    lv_label_set_text(feedback, "Salvo! Enviando ao servidor...");
+                    lv_obj_set_style_text_color(feedback, lv_color_hex(0x1E90FF), LV_PART_MAIN); // Azul
+                }
+                
+                // Formatar timestamp para ISO8601 (Supabase espera formato PostgreSQL)
+                char iso_timestamp[32];
+                strftime(iso_timestamp, sizeof(iso_timestamp), "%Y-%m-%dT%H:%M:%SZ", timeinfo);
+                ESP_LOGI(TAG, "Timestamp formatted: %s", iso_timestamp);
+                
+                supabase_measurement_t supabase_data = {
+                    .horizontal_cm = g_measurement.distance_horizontal,
+                    .top_cm = g_measurement.distance_to_top,
+                    .base_cm = g_measurement.distance_to_base,
+                    .height_top_cm = g_measurement.height_top,
+                    .height_base_cm = g_measurement.height_base,
+                    .total_cm = g_measurement.total_height
+                };
+                strncpy(supabase_data.timestamp, iso_timestamp, sizeof(supabase_data.timestamp) - 1);
+                
+                ESP_LOGI(TAG, "Calling supabase_send_measurement()...");
+                esp_err_t supabase_err = supabase_send_measurement(&supabase_data);
+                if (supabase_err == ESP_OK) {
+                    ESP_LOGI(TAG, "Measurement queued for Supabase successfully");
+                    if (feedback) {
+                        lv_label_set_text(feedback, "Salvo! Enviando ao servidor...");
+                        lv_timer_create(feedback_timer_cb, 3000, feedback);
+                    }
+                } else {
+                    ESP_LOGW(TAG, "Failed to queue measurement for Supabase: %s", esp_err_to_name(supabase_err));
+                    if (feedback) {
+                        lv_label_set_text(feedback, "Salvo! Erro ao enviar servidor");
+                        lv_obj_set_style_text_color(feedback, lv_color_hex(0xFFA500), LV_PART_MAIN); // Laranja
+                        lv_timer_create(feedback_timer_cb, 3000, feedback);
+                    }
+                }
+            } else {
+                ESP_LOGW(TAG, "Supabase not initialized, skipping cloud sync");
+                if (feedback) {
+                    lv_label_set_text(feedback, "Salvo! (Servidor offline)");
+                    lv_obj_set_style_text_color(feedback, lv_color_hex(0xFFA500), LV_PART_MAIN); // Laranja
+                    lv_timer_create(feedback_timer_cb, 3000, feedback);
+                }
             }
         } else {
             ESP_LOGE(TAG, "Falha ao salvar no SD (%s)", esp_err_to_name(err));
