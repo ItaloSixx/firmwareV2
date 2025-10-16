@@ -6,6 +6,7 @@
  */
 
 #include "measurement_main.h"
+#include "measurement_history.h"
 #include "../../styles/ui_styles.h"
 #include "../../../sensors/lidar_tf_mini.h"
 #include "../../../config.h"
@@ -34,7 +35,10 @@ static lv_obj_t *g_distance_label = NULL;
 static lv_obj_t *g_result_panel = NULL;
 static lv_obj_t *g_save_btn = NULL;
 static lv_obj_t *g_cancel_btn = NULL;
+static lv_obj_t *g_history_btn = NULL;
 static lv_timer_t *g_lidar_update_timer = NULL;
+static lv_obj_t *g_measurement_screen = NULL;
+static lv_obj_t *g_history_subscreen = NULL;
 
 // Widgets dinâmicos para cada medição
 static lv_obj_t *g_widget_horizontal = NULL;
@@ -51,6 +55,8 @@ static uint32_t g_last_button_time = 0;
 // Declarações de funções privadas
 static void save_button_cb(lv_event_t *e);
 static void cancel_button_cb(lv_event_t *e);
+static void history_button_cb(lv_event_t *e);
+static void history_close_cb(void);
 static void update_ui_state(void);
 static float read_lidar_distance(void);
 static void update_result_display(void);
@@ -112,17 +118,17 @@ lv_obj_t *measurement_main_create(lv_obj_t *parent)
 {
     if (!parent) return NULL;
 
-    lv_obj_t *screen = lv_obj_create(parent);
-    lv_obj_set_size(screen, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(screen, lv_color_hex(UI_COLOR_BACKGROUND), LV_PART_MAIN);
-    lv_obj_set_style_border_width(screen, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(screen, 0, LV_PART_MAIN);
+    g_measurement_screen = lv_obj_create(parent);
+    lv_obj_set_size(g_measurement_screen, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(g_measurement_screen, lv_color_hex(UI_COLOR_BACKGROUND), LV_PART_MAIN);
+    lv_obj_set_style_border_width(g_measurement_screen, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(g_measurement_screen, 0, LV_PART_MAIN);
     
     // Desabilitar scroll na tela de medição
-    lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(g_measurement_screen, LV_OBJ_FLAG_SCROLLABLE);
 
     // === CABEÇALHO ===
-    lv_obj_t *header = lv_obj_create(screen);
+    lv_obj_t *header = lv_obj_create(g_measurement_screen);
     lv_obj_set_size(header, LV_PCT(100), 60);
     lv_obj_set_pos(header, 0, 0);
     lv_obj_set_style_bg_color(header, lv_color_hex(UI_COLOR_PRIMARY), LV_PART_MAIN);
@@ -135,8 +141,23 @@ lv_obj_t *measurement_main_create(lv_obj_t *parent)
     lv_obj_set_style_text_font(title, UI_FONT_LARGE, LV_PART_MAIN);
     lv_obj_align(title, LV_ALIGN_CENTER, 0, 0);
 
+    // Botão de histórico no cabeçalho
+    g_history_btn = lv_btn_create(header);
+    lv_obj_set_size(g_history_btn, 100, 40);
+    lv_obj_align(g_history_btn, LV_ALIGN_RIGHT_MID, -10, 0);
+    lv_obj_set_style_radius(g_history_btn, 8, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(g_history_btn, lv_color_hex(UI_COLOR_ON_PRIMARY), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(g_history_btn, LV_OPA_20, LV_PART_MAIN);
+    lv_obj_add_event_cb(g_history_btn, history_button_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *history_label = lv_label_create(g_history_btn);
+    lv_label_set_text(history_label, LV_SYMBOL_LIST " Hist");
+    lv_obj_set_style_text_color(history_label, lv_color_hex(UI_COLOR_ON_PRIMARY), LV_PART_MAIN);
+    lv_obj_set_style_text_font(history_label, UI_FONT_SMALL, LV_PART_MAIN);
+    lv_obj_center(history_label);
+
     // === PAINEL DE STATUS ===
-    lv_obj_t *status_panel = lv_obj_create(screen);
+    lv_obj_t *status_panel = lv_obj_create(g_measurement_screen);
     lv_obj_set_size(status_panel, 456, 80);  // 95% de 480px = 456px
     lv_obj_set_pos(status_panel, 12, 70);    // 2.5% de 480px = 12px
     lv_obj_set_style_bg_color(status_panel, lv_color_hex(UI_COLOR_SURFACE), LV_PART_MAIN);
@@ -158,7 +179,7 @@ lv_obj_t *measurement_main_create(lv_obj_t *parent)
     lv_obj_align(g_distance_label, LV_ALIGN_CENTER, 0, 15);
 
     // === PAINEL DE INSTRUÇÕES ===
-    lv_obj_t *instruction_panel = lv_obj_create(screen);
+    lv_obj_t *instruction_panel = lv_obj_create(g_measurement_screen);
     lv_obj_set_size(instruction_panel, 456, 60);
     lv_obj_set_pos(instruction_panel, 12, 160);
     lv_obj_set_style_bg_color(instruction_panel, lv_color_hex(UI_COLOR_LIGHT), LV_PART_MAIN);
@@ -176,7 +197,7 @@ lv_obj_t *measurement_main_create(lv_obj_t *parent)
     lv_obj_set_width(g_instruction_label, 400);
 
     // === PAINEL DE RESULTADOS ===
-    g_result_panel = lv_obj_create(screen);
+    g_result_panel = lv_obj_create(g_measurement_screen);
     lv_obj_set_size(g_result_panel, 456, 120);
     lv_obj_set_pos(g_result_panel, 12, 230);
     lv_obj_set_style_bg_color(g_result_panel, lv_color_hex(UI_COLOR_SURFACE), LV_PART_MAIN);
@@ -187,7 +208,7 @@ lv_obj_t *measurement_main_create(lv_obj_t *parent)
     lv_obj_add_flag(g_result_panel, LV_OBJ_FLAG_HIDDEN); // Oculto inicialmente
 
     // === CONTAINER PARA WIDGETS DINÂMICOS ===
-    g_widgets_container = lv_obj_create(screen);
+    g_widgets_container = lv_obj_create(g_measurement_screen);
     lv_obj_set_size(g_widgets_container, 456, 120);
     lv_obj_set_pos(g_widgets_container, 12, 230);
     lv_obj_set_style_bg_opa(g_widgets_container, LV_OPA_TRANSP, LV_PART_MAIN);
@@ -199,7 +220,7 @@ lv_obj_t *measurement_main_create(lv_obj_t *parent)
 
     // === BOTÕES DE AÇÃO (OCULTOS INICIALMENTE) ===
 
-    g_save_btn = lv_btn_create(screen);
+    g_save_btn = lv_btn_create(g_measurement_screen);
     lv_obj_set_size(g_save_btn, 120, 45);
     // Posicionar ancorado ao rodapé para garantir visibilidade em qualquer rotação
     lv_obj_align(g_save_btn, LV_ALIGN_BOTTOM_LEFT, 30, -12);
@@ -213,7 +234,7 @@ lv_obj_t *measurement_main_create(lv_obj_t *parent)
     lv_obj_set_style_text_font(save_label, UI_FONT_SMALL, LV_PART_MAIN);
     lv_obj_center(save_label);
 
-    g_cancel_btn = lv_btn_create(screen);
+    g_cancel_btn = lv_btn_create(g_measurement_screen);
     lv_obj_set_size(g_cancel_btn, 120, 45);
     // Posicionar ancorado ao rodapé para garantir visibilidade em qualquer rotação
     lv_obj_align(g_cancel_btn, LV_ALIGN_BOTTOM_RIGHT, -30, -12);
@@ -246,7 +267,7 @@ lv_obj_t *measurement_main_create(lv_obj_t *parent)
     g_lidar_update_timer = lv_timer_create(lidar_update_timer_cb, 200, NULL);
 
     ESP_LOGI(TAG, "Measurement screen created successfully with physical button on GPIO %d", MEASUREMENT_BUTTON_PIN);
-    return screen;
+    return g_measurement_screen;
 }
 
 // === IMPLEMENTAÇÃO DOS CALLBACKS ===
@@ -345,6 +366,38 @@ static void cancel_button_cb(lv_event_t *e)
     g_state = PLANT_MEASUREMENT_STATE_HORIZONTAL;
     memset(&g_measurement, 0, sizeof(plant_measurement_t));
     update_ui_state();
+}
+
+static void history_button_cb(lv_event_t *e)
+{
+    (void)e;
+    
+    ESP_LOGI(TAG, "Opening measurement history");
+    
+    if (g_history_subscreen) {
+        lv_obj_del(g_history_subscreen);
+        g_history_subscreen = NULL;
+    }
+    
+    if (g_measurement_screen) {
+        lv_obj_add_flag(g_measurement_screen, LV_OBJ_FLAG_HIDDEN);
+    }
+    
+    g_history_subscreen = measurement_history_create(lv_obj_get_parent(g_measurement_screen), history_close_cb);
+}
+
+static void history_close_cb(void)
+{
+    ESP_LOGI(TAG, "Closing measurement history");
+    
+    if (g_history_subscreen) {
+        lv_obj_del_async(g_history_subscreen);
+        g_history_subscreen = NULL;
+    }
+    
+    if (g_measurement_screen) {
+        lv_obj_clear_flag(g_measurement_screen, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 // === FUNÇÕES AUXILIARES ===

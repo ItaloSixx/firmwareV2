@@ -3,6 +3,7 @@
 
 set(MEASUREMENT_SOURCES
     "measurement_main.c"
+    "measurement_history.c"
 )
 
 # Adicionar ao COMPONENT_SRCS da pasta pai
