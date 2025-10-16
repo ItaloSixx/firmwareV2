@@ -19,6 +19,7 @@ void ui_os_init(void)
     if (!g_ui_manager) {
         ESP_LOGE(TAG, "Failed to initialize UI manager");
     }
+
 }
 
 void ui_set_screen(ui_screen_t screen)

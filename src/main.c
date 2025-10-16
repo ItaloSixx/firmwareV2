@@ -21,6 +21,7 @@
 
 // Inclusao dos modulos do projeto
 #include "interface/ui_os.h"
+#include "interface/screens/settings/wifi/wifi_main.h"
 #include "sensors/sensors.h"
 #include "sensors/lidar_tf_mini.h"
 #include "storage/sd_storage.h"
@@ -45,6 +46,9 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
     ESP_LOGI(TAG, "NVS Flash inicializado!");
+
+    // Inicializa o serviço Wi-Fi em background
+    wifi_main_service_init();
     
     // Configurar timezone para UTC para evitar problemas de conversão
     setenv("TZ", "UTC", 1);
@@ -119,7 +123,7 @@ void app_main(void)
             ui_os_update();
             
             // Atualiza estado do sistema
-            system_state.wifi_connected = false; // Implementar WiFi futuramente
+            system_state.wifi_connected = wifi_main_is_connected();
             system_state.bluetooth_connected = false; // Implementar BT futuramente
             system_state.battery_level = 95; // Simular bateria por enquanto
             strcpy(system_state.current_time, "11 Oct 2025 17:20");
