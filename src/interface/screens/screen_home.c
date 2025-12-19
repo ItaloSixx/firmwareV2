@@ -7,10 +7,12 @@
 
 #include "screen_home.h"
 #include "../styles/ui_styles.h"
+#include "measurement/measurement_main.h"
 
 // Callbacks dos botões
 static void button_sensors_cb(lv_event_t *e);
-static void button_measurement_cb(lv_event_t *e);
+static void button_measurement_full_cb(lv_event_t *e);
+static void button_measurement_single_cb(lv_event_t *e);
 static void button_config_cb(lv_event_t *e);
 static void button_about_cb(lv_event_t *e);
 
@@ -40,29 +42,45 @@ lv_obj_t *screen_home_create(lv_obj_t *parent)
     lv_obj_clear_flag(main_card, LV_OBJ_FLAG_SCROLLABLE);
     
     // Título
-    lv_obj_t *title = ui_create_title(main_card, "System Dashboard");
+    lv_obj_t *title = ui_create_title(main_card, "EcoDashboard");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, UI_MARGIN_MEDIUM);
     
-    // Botão principal de medição (destacado)
-    lv_obj_t *measure_btn = lv_btn_create(main_card);
-    lv_obj_set_size(measure_btn, 320, 70);
-    lv_obj_align(measure_btn, LV_ALIGN_TOP_MID, 0, 60);
-    lv_obj_set_style_bg_color(measure_btn, lv_color_hex(UI_COLOR_SUCCESS), LV_PART_MAIN);
-    lv_obj_set_style_radius(measure_btn, 12, LV_PART_MAIN);
-    lv_obj_set_style_shadow_width(measure_btn, 8, LV_PART_MAIN);
-    lv_obj_set_style_shadow_opa(measure_btn, LV_OPA_30, LV_PART_MAIN);
+    // Botão de medição completa
+    lv_obj_t *measure_full_btn = lv_btn_create(main_card);
+    lv_obj_set_size(measure_full_btn, 320, 70);
+    lv_obj_align(measure_full_btn, LV_ALIGN_TOP_MID, 0, 50);
+    lv_obj_set_style_bg_color(measure_full_btn, lv_color_hex(UI_COLOR_SUCCESS), LV_PART_MAIN);
+    lv_obj_set_style_radius(measure_full_btn, 12, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(measure_full_btn, 8, LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(measure_full_btn, LV_OPA_30, LV_PART_MAIN);
     
-    lv_obj_t *measure_label = lv_label_create(measure_btn);
-    lv_label_set_text(measure_label, LV_SYMBOL_EDIT " MEDICAO DE PLANTAS");
-    lv_obj_set_style_text_color(measure_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(measure_label, UI_FONT_MEDIUM, LV_PART_MAIN);
-    lv_obj_center(measure_label);
-    lv_obj_add_event_cb(measure_btn, button_measurement_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *measure_full_label = lv_label_create(measure_full_btn);
+    lv_label_set_text(measure_full_label, LV_SYMBOL_EDIT " MEDICAO COMPLETA");
+    lv_obj_set_style_text_color(measure_full_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(measure_full_label, UI_FONT_MEDIUM, LV_PART_MAIN);
+    lv_obj_center(measure_full_label);
+    lv_obj_add_event_cb(measure_full_btn, button_measurement_full_cb, LV_EVENT_CLICKED, NULL);
+
+    // Botão de medição única
+    lv_obj_t *measure_single_btn = lv_btn_create(main_card);
+    lv_obj_set_size(measure_single_btn, 320, 70);
+    lv_obj_align(measure_single_btn, LV_ALIGN_TOP_MID, 0, 140);
+    lv_obj_set_style_bg_color(measure_single_btn, lv_color_hex(UI_COLOR_PRIMARY), LV_PART_MAIN);
+    lv_obj_set_style_radius(measure_single_btn, 12, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(measure_single_btn, 8, LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(measure_single_btn, LV_OPA_20, LV_PART_MAIN);
+    
+    lv_obj_t *measure_single_label = lv_label_create(measure_single_btn);
+    lv_label_set_text(measure_single_label, LV_SYMBOL_OK " MEDICAO UNICA");
+    lv_obj_set_style_text_color(measure_single_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(measure_single_label, UI_FONT_MEDIUM, LV_PART_MAIN);
+    lv_obj_center(measure_single_label);
+    lv_obj_add_event_cb(measure_single_btn, button_measurement_single_cb, LV_EVENT_CLICKED, NULL);
 
     // Grid para botões secundários 3x1
     lv_obj_t *button_grid = lv_obj_create(main_card);
     lv_obj_set_size(button_grid, 350, 60);
-    lv_obj_align(button_grid, LV_ALIGN_TOP_MID, 0, 150);
+    lv_obj_align(button_grid, LV_ALIGN_TOP_MID, 0, 230);
     lv_obj_set_style_bg_opa(button_grid, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(button_grid, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(button_grid, UI_MARGIN_SMALL, LV_PART_MAIN);
@@ -154,9 +172,19 @@ static void button_sensors_cb(lv_event_t *e)
     }
 }
 
-static void button_measurement_cb(lv_event_t *e)
+static void button_measurement_full_cb(lv_event_t *e)
 {
     (void)e;
+    measurement_set_mode(MEASUREMENT_MODE_FULL);
+    if (g_navigation_callback) {
+        g_navigation_callback(UI_SCREEN_MEASUREMENT);
+    }
+}
+
+static void button_measurement_single_cb(lv_event_t *e)
+{
+    (void)e;
+    measurement_set_mode(MEASUREMENT_MODE_SINGLE);
     if (g_navigation_callback) {
         g_navigation_callback(UI_SCREEN_MEASUREMENT);
     }

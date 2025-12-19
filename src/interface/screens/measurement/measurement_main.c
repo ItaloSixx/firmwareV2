@@ -40,6 +40,7 @@ static lv_obj_t *g_history_btn = NULL;
 static lv_timer_t *g_lidar_update_timer = NULL;
 static lv_obj_t *g_measurement_screen = NULL;
 static lv_obj_t *g_history_subscreen = NULL;
+static measurement_mode_t g_mode = MEASUREMENT_MODE_FULL;
 
 // Widgets dinâmicos para cada medição
 static lv_obj_t *g_widget_horizontal = NULL;
@@ -80,9 +81,13 @@ static void save_and_restart(void);
 static const char* get_instruction_text(plant_measurement_state_t state) {
     switch (state) {
         case PLANT_MEASUREMENT_STATE_IDLE:
-            return "Pressione o botao fisico para iniciar medicao";
+            return g_mode == MEASUREMENT_MODE_SINGLE ?
+                   "Pressione para iniciar MEDICAO UNICA" :
+                   "Pressione o botao fisico para iniciar medicao";
         case PLANT_MEASUREMENT_STATE_HORIZONTAL:
-            return "PASSO 1: Mire no CENTRO da planta e pressione o botao";
+            return g_mode == MEASUREMENT_MODE_SINGLE ?
+                   "Mire na planta e pressione para leitura UNICA" :
+                   "PASSO 1: Mire no CENTRO da planta e pressione o botao";
         case PLANT_MEASUREMENT_STATE_TOP:
             return "PASSO 2: Mire no TOPO da planta e pressione o botao";
         case PLANT_MEASUREMENT_STATE_BASE:
@@ -286,10 +291,26 @@ static void process_button_press(void)
             {
                 float distance = read_lidar_distance();
                 if (distance > 0.0f) {
-                    g_measurement.distance_horizontal = distance;
-                    ESP_LOGI(TAG, "Horizontal distance captured: %.1f cm", g_measurement.distance_horizontal);
-                    create_horizontal_widget();
-                    g_state = PLANT_MEASUREMENT_STATE_TOP;
+                    if (g_mode == MEASUREMENT_MODE_SINGLE) {
+                        // Medição única: usar a leitura como altura total
+                        g_measurement.distance_horizontal = distance;
+                        g_measurement.distance_to_top = distance;
+                        g_measurement.distance_to_base = distance;
+                        g_measurement.height_top = distance;
+                        g_measurement.height_base = 0.0f;
+                        g_measurement.total_height = distance;
+                        g_measurement.measurement_valid = true;
+
+                        ESP_LOGI(TAG, "Single measurement captured: %.1f cm", distance);
+
+                        g_state = PLANT_MEASUREMENT_STATE_COMPLETE;
+                        show_action_buttons();
+                    } else {
+                        g_measurement.distance_horizontal = distance;
+                        ESP_LOGI(TAG, "Horizontal distance captured: %.1f cm", g_measurement.distance_horizontal);
+                        create_horizontal_widget();
+                        g_state = PLANT_MEASUREMENT_STATE_TOP;
+                    }
                 } else {
                     ESP_LOGW(TAG, "Invalid LiDAR reading, try again");
                     show_error_feedback("LiDAR sem sinal! Tente novamente");
@@ -451,10 +472,10 @@ static void update_ui_state(void)
                 break;
             default:
                 if (lidar_available && current_lidar.valid) {
-                    snprintf(dist_text, sizeof(dist_text), "LiDAR: %d cm (Forca: %d)", 
-                            current_lidar.distance, current_lidar.strength);
+                    snprintf(dist_text, sizeof(dist_text), "Distancia: %d cm", 
+                            current_lidar.distance);
                 } else {
-                    snprintf(dist_text, sizeof(dist_text), "LiDAR: -- cm (Sem sinal)");
+                    snprintf(dist_text, sizeof(dist_text), "Distancia: -- cm");
                 }
                 break;
         }
@@ -577,8 +598,8 @@ static void lidar_update_timer_cb(lv_timer_t *timer)
             if (lidar_get_last_reading(&current_lidar) && current_lidar.valid) {
                 switch (g_state) {
                     case PLANT_MEASUREMENT_STATE_IDLE:
-                        snprintf(dist_text, sizeof(dist_text), "LiDAR: %d cm (Força: %d)", 
-                                current_lidar.distance, current_lidar.strength);
+                        snprintf(dist_text, sizeof(dist_text), "Distancia: %d cm", 
+                                current_lidar.distance);
                         break;
                         
                     case PLANT_MEASUREMENT_STATE_HORIZONTAL:
@@ -676,6 +697,17 @@ bool measurement_load_history(void)
 {
     ESP_LOGI(TAG, "Loading measurement history");
     return true;
+}
+
+void measurement_set_mode(measurement_mode_t mode)
+{
+    g_mode = mode;
+    ESP_LOGI(TAG, "Measurement mode set to: %s", mode == MEASUREMENT_MODE_SINGLE ? "UNICA" : "COMPLETA");
+}
+
+measurement_mode_t measurement_get_mode(void)
+{
+    return g_mode;
 }
 
 // === FUNÇÕES DOS WIDGETS DINÂMICOS ===
@@ -929,9 +961,9 @@ static void save_and_restart(void)
     struct tm *timeinfo = localtime(&now);
     strftime(g_measurement.timestamp, sizeof(g_measurement.timestamp), "%d/%m/%Y %H:%M", timeinfo);
 
-    // Monta linha CSV
-    char line[256];
-    snprintf(line, sizeof(line), "%s,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f",
+    // Monta linha CSV (plant_name vazio inicialmente)
+    char line[512];
+    snprintf(line, sizeof(line), "%s,,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f",
              g_measurement.timestamp,
              g_measurement.distance_horizontal,
              g_measurement.distance_to_top,
@@ -941,7 +973,7 @@ static void save_and_restart(void)
              g_measurement.total_height);
 
     const char *csv_path = SD_MOUNT_POINT "/medicoes.csv";
-    const char *csv_header = "timestamp,horizontal_cm,top_cm,base_cm,height_top_cm,height_base_cm,total_cm";
+    const char *csv_header = "timestamp,plant_name,horizontal_cm,top_cm,base_cm,height_top_cm,height_base_cm,total_cm";
 
     // Onde mostrar feedback
     lv_obj_t *parent = g_save_btn ? lv_obj_get_parent(g_save_btn) : NULL;

@@ -23,6 +23,12 @@ typedef struct {
     char timestamp[32];        // Timestamp da medição
 } plant_measurement_t;
 
+// Modalidades de medição
+typedef enum {
+    MEASUREMENT_MODE_FULL = 0,   // Medição completa (3 leituras)
+    MEASUREMENT_MODE_SINGLE      // Medição única (1 leitura)
+} measurement_mode_t;
+
 // Estados do processo de medição
 typedef enum {
     PLANT_MEASUREMENT_STATE_IDLE,
@@ -77,5 +83,15 @@ bool measurement_save_current(void);
  * @brief Carrega histórico de medições
  */
 bool measurement_load_history(void);
+
+/**
+ * @brief Define o modo de medição (completa ou única)
+ */
+void measurement_set_mode(measurement_mode_t mode);
+
+/**
+ * @brief Obtém o modo de medição atual
+ */
+measurement_mode_t measurement_get_mode(void);
 
 #endif // MEASUREMENT_MAIN_H

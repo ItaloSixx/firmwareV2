@@ -14,6 +14,7 @@
 
 typedef struct {
     char timestamp[32];
+    char plant_name[64];
     float distance_horizontal;
     float distance_top;
     float distance_base;
@@ -66,44 +67,55 @@ static bool delete_csv_line(size_t line_to_delete)
     const char *csv_path = SD_MOUNT_POINT "/medicoes.csv";
     const char *temp_path = SD_MOUNT_POINT "/medicoes_temp.csv";
     
+    ESP_LOGI(TAG, "Attempting to delete line %zu from %s", line_to_delete, csv_path);
+    
     FILE *input = fopen(csv_path, "r");
     if (!input) {
-        ESP_LOGE(TAG, "Failed to open CSV file for reading");
+        ESP_LOGE(TAG, "Failed to open CSV file for reading: %s", csv_path);
         return false;
     }
     
     FILE *output = fopen(temp_path, "w");
     if (!output) {
-        ESP_LOGE(TAG, "Failed to create temporary file");
+        ESP_LOGE(TAG, "Failed to create temporary file: %s", temp_path);
         fclose(input);
         return false;
     }
     
     char line[HISTORY_MAX_LINE_LEN];
     size_t current_line = 0;
+    size_t lines_written = 0;
     
     while (fgets(line, sizeof(line), input)) {
         current_line++;
         if (current_line != line_to_delete) {
             fputs(line, output);
+            lines_written++;
+        } else {
+            ESP_LOGI(TAG, "Skipping line %zu: %s", current_line, line);
         }
     }
     
     fclose(input);
     fclose(output);
     
+    ESP_LOGI(TAG, "Processed %zu lines, wrote %zu lines", current_line, lines_written);
+    
     // Remover arquivo original e renomear temporário
     if (remove(csv_path) != 0) {
-        ESP_LOGE(TAG, "Failed to remove original CSV file");
+        ESP_LOGE(TAG, "Failed to remove original CSV file: %s", csv_path);
         remove(temp_path);
         return false;
     }
     
+    ESP_LOGI(TAG, "Original file removed, renaming temp file...");
+    
     if (rename(temp_path, csv_path) != 0) {
-        ESP_LOGE(TAG, "Failed to rename temporary file");
+        ESP_LOGE(TAG, "Failed to rename temporary file from %s to %s", temp_path, csv_path);
         return false;
     }
     
+    ESP_LOGI(TAG, "File successfully renamed, deletion complete");
     return true;
 }
 
@@ -112,18 +124,20 @@ static void delete_measurement_cb(lv_event_t *e)
 {
     measurement_history_entry_t *entry = (measurement_history_entry_t *)lv_event_get_user_data(e);
     if (!entry) {
-        ESP_LOGE(TAG, "Invalid entry pointer");
+        ESP_LOGE(TAG, "Invalid entry pointer in delete callback");
         return;
     }
 
-    ESP_LOGI(TAG, "Deleting measurement at line %zu: %s", entry->line_number, entry->timestamp);
+    ESP_LOGI(TAG, "Delete button pressed for measurement at line %zu: %s", entry->line_number, entry->timestamp);
     
     lv_obj_t *btn = lv_event_get_target(e);
     lv_obj_t *actions_container = lv_obj_get_parent(btn);
     lv_obj_t *card = lv_obj_get_parent(actions_container);
     
+    ESP_LOGI(TAG, "Card hierarchy validated, proceeding with deletion...");
+    
     if (delete_csv_line(entry->line_number)) {
-        ESP_LOGI(TAG, "Measurement deleted successfully");
+        ESP_LOGI(TAG, "CSV deletion successful, updating UI...");
         
         // Animar e remover o card
         lv_obj_t *feedback = lv_label_create(card);
@@ -134,14 +148,16 @@ static void delete_measurement_cb(lv_event_t *e)
         
         // Remover o card após 1 segundo
         lv_obj_del_delayed(card, 1000);
+        ESP_LOGI(TAG, "Card scheduled for deletion");
     } else {
-        ESP_LOGE(TAG, "Failed to delete measurement");
+        ESP_LOGE(TAG, "CSV deletion failed, showing error feedback");
         
         lv_obj_t *feedback = lv_label_create(card);
         lv_label_set_text(feedback, LV_SYMBOL_CLOSE " Erro ao excluir");
         lv_obj_set_style_text_color(feedback, lv_color_hex(0xFF5252), LV_PART_MAIN);
         lv_obj_set_style_text_font(feedback, UI_FONT_SMALL, LV_PART_MAIN);
         lv_obj_align(feedback, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_del_delayed(feedback, 2000);
     }
 }
 
