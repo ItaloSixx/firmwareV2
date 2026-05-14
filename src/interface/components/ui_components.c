@@ -45,37 +45,12 @@ ui_status_bar_t *ui_create_status_bar(lv_obj_t *parent)
     // Desabilitar scroll em todas as direções
     lv_obj_clear_flag(status_bar->status_bar, LV_OBJ_FLAG_SCROLLABLE);
     
-    // Label de horário
-    status_bar->time_label = lv_label_create(status_bar->status_bar);
-    lv_label_set_text(status_bar->time_label, "10 Apr 2020 15:36");
-    lv_obj_set_style_text_color(status_bar->time_label, lv_color_hex(UI_COLOR_ON_PRIMARY), LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_bar->time_label, UI_FONT_MEDIUM, LV_PART_MAIN);
-    lv_obj_align(status_bar->time_label, LV_ALIGN_RIGHT_MID, -UI_MARGIN_MEDIUM, 0);
-    
-    // Ícones de status (lado esquerdo)
-    status_bar->wifi_icon = lv_label_create(status_bar->status_bar);
-    lv_label_set_text(status_bar->wifi_icon, LV_SYMBOL_WIFI);
-    lv_obj_set_style_text_color(status_bar->wifi_icon, lv_color_hex(UI_COLOR_ON_PRIMARY), LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_bar->wifi_icon, UI_FONT_MEDIUM, LV_PART_MAIN);
-    lv_obj_align(status_bar->wifi_icon, LV_ALIGN_LEFT_MID, UI_MARGIN_MEDIUM, 0);
-    
-    status_bar->call_icon = lv_label_create(status_bar->status_bar);
-    lv_label_set_text(status_bar->call_icon, LV_SYMBOL_CALL);
-    lv_obj_set_style_text_color(status_bar->call_icon, lv_color_hex(UI_COLOR_ON_PRIMARY), LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_bar->call_icon, UI_FONT_MEDIUM, LV_PART_MAIN);
-    lv_obj_align(status_bar->call_icon, LV_ALIGN_LEFT_MID, UI_MARGIN_MEDIUM + 27, 0);
-    
-    status_bar->edit_icon = lv_label_create(status_bar->status_bar);
-    lv_label_set_text(status_bar->edit_icon, LV_SYMBOL_EDIT);
-    lv_obj_set_style_text_color(status_bar->edit_icon, lv_color_hex(UI_COLOR_ON_PRIMARY), LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_bar->edit_icon, UI_FONT_MEDIUM, LV_PART_MAIN);
-    lv_obj_align(status_bar->edit_icon, LV_ALIGN_LEFT_MID, UI_MARGIN_MEDIUM + 54, 0);
-    
-    status_bar->folder_icon = lv_label_create(status_bar->status_bar);
-    lv_label_set_text(status_bar->folder_icon, LV_SYMBOL_DIRECTORY);
-    lv_obj_set_style_text_color(status_bar->folder_icon, lv_color_hex(UI_COLOR_ON_PRIMARY), LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_bar->folder_icon, UI_FONT_MEDIUM, LV_PART_MAIN);
-    lv_obj_align(status_bar->folder_icon, LV_ALIGN_LEFT_MID, UI_MARGIN_MEDIUM + 81, 0);
+    // Sem ícones/horário por solicitação; manter ponteiros nulos
+    status_bar->time_label = NULL;
+    status_bar->wifi_icon = NULL;
+    status_bar->call_icon = NULL;
+    status_bar->edit_icon = NULL;
+    status_bar->folder_icon = NULL;
     
     return status_bar;
 }
@@ -122,15 +97,17 @@ ui_nav_bar_t *ui_create_nav_bar(lv_obj_t *parent, void (*nav_callback)(ui_screen
     // IMPORTANTE: Desabilitar scroll na navbar
     lv_obj_clear_flag(nav_bar->nav_bar, LV_OBJ_FLAG_SCROLLABLE);
     
-    // Configuração dos botões
-    const char *nav_icons[] = {LV_SYMBOL_HOME, "S", "M", LV_SYMBOL_SETTINGS, LV_SYMBOL_LIST};
-    const char *nav_labels[] = {"Home", "Sensors", "Medicao", "Config", "About"};
+    // Configuração dos botões (somente Home, Medição, Config)
+    const ui_screen_t nav_screens[] = {UI_SCREEN_HOME, UI_SCREEN_MEASUREMENT, UI_SCREEN_SETTINGS};
+    const char *nav_icons[]   = {LV_SYMBOL_HOME, "M", LV_SYMBOL_SETTINGS};
+    const char *nav_labels[]  = {"Home", "Medicao", "Config"};
+    const int nav_count = 3;
     
-    for (int i = 0; i < UI_SCREEN_COUNT; i++) {
+    for (int i = 0; i < nav_count; i++) {
         // Container do botão
         lv_obj_t *btn_container = lv_obj_create(nav_bar->nav_bar);
-        lv_obj_set_size(btn_container, (UI_SCREEN_WIDTH / UI_SCREEN_COUNT) - UI_MARGIN_MEDIUM, UI_NAV_BAR_HEIGHT - UI_MARGIN_MEDIUM);
-        lv_obj_align(btn_container, LV_ALIGN_LEFT_MID, i * (UI_SCREEN_WIDTH / UI_SCREEN_COUNT) + UI_MARGIN_SMALL, 0);
+        lv_obj_set_size(btn_container, (UI_SCREEN_WIDTH / nav_count) - UI_MARGIN_MEDIUM, UI_NAV_BAR_HEIGHT - UI_MARGIN_MEDIUM);
+        lv_obj_align(btn_container, LV_ALIGN_LEFT_MID, i * (UI_SCREEN_WIDTH / nav_count) + UI_MARGIN_SMALL, 0);
         lv_obj_set_style_bg_opa(btn_container, LV_OPA_TRANSP, LV_PART_MAIN);
         lv_obj_set_style_border_width(btn_container, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(btn_container, 0, LV_PART_MAIN);
@@ -140,7 +117,7 @@ ui_nav_bar_t *ui_create_nav_bar(lv_obj_t *parent, void (*nav_callback)(ui_screen
         
         // Botão clicável
         nav_bar->nav_buttons[i] = lv_btn_create(btn_container);
-        lv_obj_set_size(nav_bar->nav_buttons[i], (UI_SCREEN_WIDTH / UI_SCREEN_COUNT) - UI_MARGIN_LARGE, UI_NAV_BAR_HEIGHT - UI_MARGIN_LARGE);
+        lv_obj_set_size(nav_bar->nav_buttons[i], (UI_SCREEN_WIDTH / nav_count) - UI_MARGIN_LARGE, UI_NAV_BAR_HEIGHT - UI_MARGIN_LARGE);
         lv_obj_center(nav_bar->nav_buttons[i]);
         lv_obj_set_style_bg_opa(nav_bar->nav_buttons[i], LV_OPA_TRANSP, LV_PART_MAIN);
         lv_obj_set_style_border_width(nav_bar->nav_buttons[i], 0, LV_PART_MAIN);
@@ -171,7 +148,7 @@ ui_nav_bar_t *ui_create_nav_bar(lv_obj_t *parent, void (*nav_callback)(ui_screen
         
         // Callback
         lv_obj_set_user_data(nav_bar->nav_buttons[i], nav_callback);
-        lv_obj_add_event_cb(nav_bar->nav_buttons[i], nav_button_event_cb, LV_EVENT_CLICKED, (void*)(uintptr_t)i);
+        lv_obj_add_event_cb(nav_bar->nav_buttons[i], nav_button_event_cb, LV_EVENT_CLICKED, (void*)(uintptr_t)nav_screens[i]);
     }
     
     return nav_bar;
@@ -181,9 +158,11 @@ void ui_update_nav_active(ui_nav_bar_t *nav_bar, ui_screen_t active_screen)
 {
     if (!nav_bar) return;
     
-    for (int i = 0; i < UI_SCREEN_COUNT; i++) {
+    const ui_screen_t nav_screens[] = {UI_SCREEN_HOME, UI_SCREEN_MEASUREMENT, UI_SCREEN_SETTINGS};
+    const int nav_count = 3;
+    for (int i = 0; i < nav_count; i++) {
         if (nav_bar->nav_buttons[i]) {
-            if (i == active_screen) {
+            if (active_screen == nav_screens[i]) {
                 lv_obj_set_style_bg_color(nav_bar->nav_buttons[i], lv_color_hex(UI_COLOR_PRIMARY), LV_PART_MAIN);
                 lv_obj_set_style_bg_opa(nav_bar->nav_buttons[i], LV_OPA_20, LV_PART_MAIN);
             } else {

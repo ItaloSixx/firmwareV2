@@ -14,6 +14,8 @@
 #include <nvs_flash.h>
 #include <time.h>
 #include <driver/uart.h>
+#include "esp_sntp.h"
+#include <sys/time.h>
 #include "config.h"
 #include "display.h"
 #include "esp_bsp.h"
@@ -30,6 +32,39 @@
 // Variaveis globais
 static sensor_data_t sensor_data = {0};
 static const char *TAG = "MAIN";
+
+// Sincroniza data/hora via NTP se Wi-Fi estiver conectado
+static void sync_time_once(void)
+{
+    if (!wifi_main_is_connected()) {
+        ESP_LOGW(TAG, "Wi-Fi nao conectado, pulando sincronizacao NTP");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Iniciando sincronizacao NTP...");
+    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_setservername(1, "time.google.com");
+    esp_sntp_init();
+
+    int retry = 0;
+    const int retry_count = 10;
+    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
+    if (retry < retry_count) {
+        time_t now;
+        struct tm timeinfo;
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        ESP_LOGI(TAG, "Hora sincronizada: %02d/%02d/%04d %02d:%02d:%02d",
+                 timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900,
+                 timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    } else {
+        ESP_LOGW(TAG, "Falha ao sincronizar NTP");
+    }
+}
 
 /**
  * @brief Inicializa o sistema
@@ -50,6 +85,9 @@ void app_main(void)
 
     // Inicializa o serviço Wi-Fi em background
     wifi_main_service_init();
+
+    // Tentar sincronizar hora via NTP (se Wi-Fi já conectou)
+    sync_time_once();
     
     // Inicializa cliente Supabase (após Wi-Fi estar configurado)
     if (supabase_init() == ESP_OK) {

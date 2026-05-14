@@ -10,11 +10,9 @@
 #include "measurement/measurement_main.h"
 
 // Callbacks dos botões
-static void button_sensors_cb(lv_event_t *e);
 static void button_measurement_full_cb(lv_event_t *e);
 static void button_measurement_single_cb(lv_event_t *e);
 static void button_config_cb(lv_event_t *e);
-static void button_about_cb(lv_event_t *e);
 
 // Callback de navegação global
 static void (*g_navigation_callback)(ui_screen_t screen) = NULL;
@@ -77,67 +75,39 @@ lv_obj_t *screen_home_create(lv_obj_t *parent)
     lv_obj_center(measure_single_label);
     lv_obj_add_event_cb(measure_single_btn, button_measurement_single_cb, LV_EVENT_CLICKED, NULL);
 
-    // Grid para botões secundários 3x1
-    lv_obj_t *button_grid = lv_obj_create(main_card);
-    lv_obj_set_size(button_grid, 350, 60);
-    lv_obj_align(button_grid, LV_ALIGN_TOP_MID, 0, 230);
-    lv_obj_set_style_bg_opa(button_grid, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(button_grid, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(button_grid, UI_MARGIN_SMALL, LV_PART_MAIN);
-    lv_obj_set_layout(button_grid, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(button_grid, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(button_grid, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    
-    // Textos dos botões secundários
-    const char* button_texts[] = {
-        "SENSORES",
-        "CONFIG", 
-        "SOBRE"
-    };
-    
-    // Ícones dos botões
-    const char* button_icons[] = {
-        LV_SYMBOL_EYE_OPEN,
-        LV_SYMBOL_SETTINGS,
-        LV_SYMBOL_LIST
-    };
-    
-    // Callbacks dos botões
-    lv_event_cb_t button_callbacks[] = {
-        button_sensors_cb,
-        button_config_cb,
-        button_about_cb
-    };
-    
-    // Criar botões secundários
-    for (int i = 0; i < 3; i++) {
-        lv_obj_t *btn = lv_btn_create(button_grid);
-        lv_obj_set_size(btn, 100, 60);
-        ui_apply_button_secondary_style(btn);
-        
-        // Container para ícone e texto
-        lv_obj_t *content = lv_obj_create(btn);
-        lv_obj_set_size(content, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-        lv_obj_center(content);
-        lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, LV_PART_MAIN);
-        lv_obj_set_style_border_width(content, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(content, 0, LV_PART_MAIN);
-        lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_flex_align(content, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        
-        // Ícone
-        lv_obj_t *icon = lv_label_create(content);
-        lv_label_set_text(icon, button_icons[i]);
-        lv_obj_set_style_text_font(icon, UI_FONT_MEDIUM, LV_PART_MAIN);
-        
-        // Label do botão
-        lv_obj_t *btn_label = lv_label_create(content);
-        lv_label_set_text(btn_label, button_texts[i]);
-        lv_obj_set_style_text_font(btn_label, UI_FONT_SMALL, LV_PART_MAIN);
-        
-        // Callback
-        lv_obj_add_event_cb(btn, button_callbacks[i], LV_EVENT_CLICKED, NULL);
-    }
+    // Barra de ação inferior com botão de Config mais largo
+    lv_obj_t *button_bar = lv_obj_create(main_card);
+    lv_obj_set_size(button_bar, 380, 70);
+    lv_obj_align(button_bar, LV_ALIGN_TOP_MID, 0, 230);
+    lv_obj_set_style_bg_opa(button_bar, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(button_bar, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(button_bar, 0, LV_PART_MAIN);
+    lv_obj_set_layout(button_bar, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(button_bar, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(button_bar, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *config_btn = lv_btn_create(button_bar);
+    lv_obj_set_size(config_btn, 320, 60);
+    ui_apply_button_secondary_style(config_btn);
+    lv_obj_add_event_cb(config_btn, button_config_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *config_content = lv_obj_create(config_btn);
+    lv_obj_set_size(config_content, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_center(config_content);
+    lv_obj_set_style_bg_opa(config_content, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(config_content, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(config_content, 0, LV_PART_MAIN);
+    lv_obj_set_flex_flow(config_content, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(config_content, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *config_icon = lv_label_create(config_content);
+    lv_label_set_text(config_icon, LV_SYMBOL_SETTINGS);
+    lv_obj_set_style_text_font(config_icon, UI_FONT_MEDIUM, LV_PART_MAIN);
+
+    lv_obj_t *config_label = lv_label_create(config_content);
+    lv_label_set_text(config_label, "CONFIG");
+    lv_obj_set_style_text_font(config_label, UI_FONT_MEDIUM, LV_PART_MAIN);
+    lv_obj_set_style_pad_left(config_label, 8, LV_PART_MAIN);
     
     return screen;
 }
@@ -164,14 +134,6 @@ void screen_home_set_navigation_callback(void (*callback)(ui_screen_t screen))
     g_navigation_callback = callback;
 }
 
-static void button_sensors_cb(lv_event_t *e)
-{
-    (void)e;
-    if (g_navigation_callback) {
-        g_navigation_callback(UI_SCREEN_SENSORS);
-    }
-}
-
 static void button_measurement_full_cb(lv_event_t *e)
 {
     (void)e;
@@ -195,13 +157,5 @@ static void button_config_cb(lv_event_t *e)
     (void)e;
     if (g_navigation_callback) {
         g_navigation_callback(UI_SCREEN_SETTINGS);
-    }
-}
-
-static void button_about_cb(lv_event_t *e)
-{
-    (void)e;
-    if (g_navigation_callback) {
-        g_navigation_callback(UI_SCREEN_ABOUT);
     }
 }

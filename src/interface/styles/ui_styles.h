@@ -42,7 +42,7 @@
 #define UI_SCREEN_WIDTH            480
 #define UI_SCREEN_HEIGHT           320
 #define UI_STATUS_BAR_HEIGHT       30
-#define UI_NAV_BAR_HEIGHT          50
+#define UI_NAV_BAR_HEIGHT          80
 #define UI_CONTENT_HEIGHT          (UI_SCREEN_HEIGHT - UI_STATUS_BAR_HEIGHT - UI_NAV_BAR_HEIGHT)
 
 // Espaçamentos
